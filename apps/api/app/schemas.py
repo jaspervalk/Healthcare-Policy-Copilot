@@ -40,6 +40,10 @@ class DocumentRead(BaseModel):
 
 class UploadDocumentResponse(BaseModel):
     document: DocumentRead
+    auto_indexed: bool
+    chunk_count: int
+    embedding_provider: str
+    embedding_dimensions: int
 
 
 class IndexDocumentResponse(BaseModel):
@@ -79,4 +83,3 @@ class QueryResponse(BaseModel):
     embedding_provider: str
     top_k: int
     results: list[QueryChunkResult]
-

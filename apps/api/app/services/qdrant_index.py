@@ -31,6 +31,28 @@ class QdrantIndexService:
 
         self.collection_name = settings.qdrant_collection_name
 
+    def _ensure_payload_indexes(self) -> None:
+        indexed_fields = {
+            "document_id": models.PayloadSchemaType.KEYWORD,
+            "department": models.PayloadSchemaType.KEYWORD,
+            "document_type": models.PayloadSchemaType.KEYWORD,
+            "policy_status": models.PayloadSchemaType.KEYWORD,
+            "source_filename": models.PayloadSchemaType.KEYWORD,
+            "page_start": models.PayloadSchemaType.INTEGER,
+            "page_end": models.PayloadSchemaType.INTEGER,
+        }
+
+        for field_name, schema in indexed_fields.items():
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field_name,
+                    field_schema=schema,
+                    wait=True,
+                )
+            except Exception:
+                continue
+
     def ensure_collection(self, dimensions: int) -> None:
         collection = None
         try:
@@ -43,6 +65,7 @@ class QdrantIndexService:
                 collection_name=self.collection_name,
                 vectors_config=models.VectorParams(size=dimensions, distance=models.Distance.COSINE),
             )
+            self._ensure_payload_indexes()
             return
 
         configured = collection.config.params.vectors
@@ -51,6 +74,8 @@ class QdrantIndexService:
             raise RuntimeError(
                 f"Existing Qdrant collection dimension mismatch: expected {dimensions}, found {size}"
             )
+
+        self._ensure_payload_indexes()
 
     def replace_document_chunks(self, document_id: str, chunks: list[dict], vectors: list[list[float]]) -> None:
         if not chunks:

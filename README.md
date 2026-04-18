@@ -4,7 +4,7 @@ Phase 1 foundation for a healthcare-policy retrieval system with:
 
 - FastAPI backend
 - Next.js frontend shell
-- PDF upload and parsing
+- PDF upload with automatic indexing
 - chunking and metadata extraction
 - dense embeddings
 - Qdrant indexing
@@ -79,15 +79,14 @@ QDRANT_URL=http://localhost:6333
 ## Current Phase 1 Endpoints
 
 - `GET /api/health`
-- `POST /api/documents/upload`
+- `POST /api/documents/upload` uploads and auto-indexes a PDF
 - `GET /api/documents`
 - `GET /api/documents/{document_id}`
-- `POST /api/documents/{document_id}/index`
+- `POST /api/documents/{document_id}/index` manually reindexes an existing document
 - `POST /api/query`
 
 ## Notes
 
-- The upload/index flow is synchronous in Phase 1 for simplicity.
+- Upload and indexing are synchronous in Phase 1 for simplicity.
 - PDF parsing starts with text-based PDFs. OCR is intentionally deferred.
 - Retrieval supports metadata filters for `department`, `document_type`, and `policy_status`.
-

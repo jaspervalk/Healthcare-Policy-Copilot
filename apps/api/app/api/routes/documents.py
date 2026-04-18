@@ -13,6 +13,24 @@ def _document_payload(document) -> DocumentRead:
     return DocumentRead.model_validate(document).model_copy(update={"chunk_count": len(document.chunks)})
 
 
+def _index_payload(document, chunk_count: int, provider: str, dimensions: int) -> IndexDocumentResponse:
+    return IndexDocumentResponse(
+        document=_document_payload(document),
+        chunk_count=chunk_count,
+        embedding_provider=provider,
+        embedding_dimensions=dimensions,
+    )
+
+
+def _mark_document_failed(db: Session, document_id: str, error_message: str) -> None:
+    db.rollback()
+    document = get_document(db, document_id)
+    if document is not None:
+        document.ingestion_status = "failed"
+        document.parse_error = error_message
+        db.commit()
+
+
 @router.get("", response_model=list[DocumentRead])
 def get_documents(db: Session = Depends(get_db)) -> list[DocumentRead]:
     return [_document_payload(document) for document in list_documents(db)]
@@ -36,8 +54,19 @@ async def upload_document(
 
     try:
         document = await create_document_from_upload(db, file)
-        return UploadDocumentResponse(document=_document_payload(document))
+        indexed_document, chunk_count, provider, dimensions = index_document(db, document)
+        return UploadDocumentResponse(
+            document=_document_payload(indexed_document),
+            auto_indexed=True,
+            chunk_count=chunk_count,
+            embedding_provider=provider,
+            embedding_dimensions=dimensions,
+        )
     except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        if "document" in locals():
+            _mark_document_failed(db, document.id, str(exc))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
@@ -49,17 +78,7 @@ def index_document_by_id(document_id: str, db: Session = Depends(get_db)) -> Ind
 
     try:
         indexed_document, chunk_count, provider, dimensions = index_document(db, document)
-        return IndexDocumentResponse(
-            document=_document_payload(indexed_document),
-            chunk_count=chunk_count,
-            embedding_provider=provider,
-            embedding_dimensions=dimensions,
-        )
+        return _index_payload(indexed_document, chunk_count, provider, dimensions)
     except Exception as exc:
-        db.rollback()
-        document = get_document(db, document_id)
-        if document is not None:
-            document.ingestion_status = "failed"
-            document.parse_error = str(exc)
-            db.commit()
+        _mark_document_failed(db, document_id, str(exc))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

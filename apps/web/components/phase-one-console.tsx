@@ -10,6 +10,10 @@ type UploadResult = {
     ingestion_status: string;
     chunk_count: number;
   };
+  auto_indexed: boolean;
+  chunk_count: number;
+  embedding_provider: string;
+  embedding_dimensions: number;
 };
 
 type IndexResult = {
@@ -74,7 +78,12 @@ export function PhaseOneConsole() {
       }
       setUploadResult(payload);
       setDocumentId(payload.document.id);
-      setIndexResult(null);
+      setIndexResult({
+        chunk_count: payload.chunk_count,
+        embedding_provider: payload.embedding_provider,
+        embedding_dimensions: payload.embedding_dimensions,
+        document: payload.document,
+      });
       setQueryResult(null);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Upload failed");
@@ -143,7 +152,7 @@ export function PhaseOneConsole() {
 
         <form onSubmit={handleUpload} className="rounded-[24px] border border-slate/10 bg-white p-5">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-[0.18em] text-moss">
-            1. Upload PDF
+            1. Upload PDF + Auto Index
           </label>
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <input
@@ -157,14 +166,14 @@ export function PhaseOneConsole() {
               disabled={loading === "upload"}
               className="rounded-2xl bg-slate px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#101820] disabled:opacity-60"
             >
-              {loading === "upload" ? "Uploading..." : "Upload"}
+              {loading === "upload" ? "Uploading & Indexing..." : "Upload & Index"}
             </button>
           </div>
         </form>
 
         <div className="mt-5 rounded-[24px] border border-slate/10 bg-white p-5">
           <label className="mb-3 block text-sm font-semibold uppercase tracking-[0.18em] text-moss">
-            2. Index Document
+            2. Reindex Existing Document
           </label>
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <input
@@ -247,7 +256,7 @@ export function PhaseOneConsole() {
               ))
             ) : (
               <div className="rounded-3xl border border-dashed border-slate/15 bg-white px-5 py-8 text-sm leading-6 text-slate/65">
-                Upload a policy PDF, index it, then run a query. The top retrieved chunks will appear here.
+                Upload a policy PDF and the app will index it automatically. Then run a query to inspect the top retrieved chunks.
               </div>
             )}
           </div>
@@ -268,4 +277,3 @@ function StatusRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
