@@ -16,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="font-[var(--font-body)] antialiased">{children}</body>
+      <body className="[font-family:var(--font-body)] antialiased">{children}</body>
     </html>
   );
 }

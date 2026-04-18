@@ -143,6 +143,24 @@ export function PhaseOneConsole() {
     }
   }, [deleteTargetId, documents, selectedDocumentId]);
 
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+      if (deleteTargetId) {
+        setDeleteTargetId(null);
+        return;
+      }
+      if (selectedDocumentId) {
+        setSelectedDocumentId(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [deleteTargetId, selectedDocumentId]);
+
   async function loadDocuments() {
     setIsLoadingDocuments(true);
     try {
@@ -299,6 +317,12 @@ export function PhaseOneConsole() {
   }
 
   async function handleAnswer() {
+    if (!question.trim()) {
+      setAnswerError("Enter a grounded question before generating an answer.");
+      setAnswerMessage(null);
+      return;
+    }
+
     setAnswerError(null);
     setAnswerMessage(null);
     setIsAnswering(true);
@@ -347,6 +371,7 @@ export function PhaseOneConsole() {
   const attentionDocuments = documents.filter((document) => document.ingestion_status !== "indexed");
   const activePolicies = documents.filter((document) => document.policy_status === "active");
   const totalChunks = documents.reduce((sum, document) => sum + document.chunk_count, 0);
+  const questionIsEmpty = question.trim().length === 0;
 
   const departmentOptions = uniqueStrings(documents.map((document) => document.department));
   const documentTypeOptions = uniqueStrings(documents.map((document) => document.document_type));
@@ -436,18 +461,35 @@ export function PhaseOneConsole() {
     libraryDocumentTypeFilter !== "all" ||
     libraryDepartmentFilter !== "all";
 
+  const indexedRate = documents.length ? Math.round((indexedDocuments.length / documents.length) * 100) : 0;
+  const uploadFileLabel = file ? `${file.name} · ${formatFileSize(file.size)}` : "No file selected yet. Click here to choose a PDF for ingestion.";
+  const answerReadinessLabel = questionIsEmpty
+    ? "question needed"
+    : !indexedDocuments.length
+      ? "no indexed corpus"
+      : isAnswering
+        ? "generating"
+        : "ready";
+  const answerReadinessTone: "success" | "warning" =
+    questionIsEmpty || !indexedDocuments.length || isAnswering ? "warning" : "success";
+
   return (
-    <>
-      <section className="rounded-[34px] border border-white/70 bg-paper/92 p-6 shadow-card backdrop-blur md:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-[0.26em] text-clay">Answer Workspace</p>
-            <h2 className="font-[var(--font-display)] text-4xl font-bold text-slate md:text-[2.8rem]">
-              Ask Grounded Questions Against The Corpus
+    <div className="space-y-8 pb-6">
+      <section className="rounded-[32px] border border-white/80 bg-paper/92 p-6 shadow-card backdrop-blur md:p-7">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="success">primary workflow</Badge>
+              <Badge>grounded answer generation</Badge>
+              <Badge>{indexedDocuments.length} searchable docs</Badge>
+            </div>
+            <p className="mt-4 text-sm font-medium uppercase tracking-[0.26em] text-clay">Answer Workspace</p>
+            <h2 className="mt-3 [font-family:var(--font-display)] text-4xl font-bold leading-[1.02] text-slate md:text-[2.8rem]">
+              Ask grounded questions against the live corpus.
             </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate/74">
-              This is the primary workflow. Use the indexed document set to generate evidence-backed answers, then inspect
-              the source excerpts before trusting the response.
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate/75">
+              This is the product’s main job. Use the indexed source set to generate evidence-backed answers, then review
+              the supporting excerpts before trusting the response.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -457,32 +499,55 @@ export function PhaseOneConsole() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="mt-6 grid gap-6 xl:grid-cols-[1.22fr_0.78fr]">
           <div className="space-y-6">
-            <section className="rounded-[30px] border border-slate/10 bg-white p-5 md:p-6">
+            <section className="rounded-[30px] border border-slate/10 bg-white p-5 md:p-6" aria-busy={isAnswering}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-moss">Question Composer</p>
-                  <p className="mt-2 text-sm leading-6 text-slate/68">
-                    Ask about policy coverage, escalation paths, review timing, documentation rules, or operational
-                    procedures.
+                  <p className="mt-2 text-sm leading-6 text-slate/70">
+                    Ask about policy coverage, escalation paths, review timing, documentation rules, or operational procedures.
                   </p>
                 </div>
-                <div className="rounded-full border border-slate/10 bg-sand px-4 py-2 text-sm text-slate">
-                  Searching {indexedDocuments.length} doc{indexedDocuments.length === 1 ? "" : "s"}
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone={answerReadinessTone}>{answerReadinessLabel}</Badge>
+                  <Badge>{indexedDocuments.length} searchable doc{indexedDocuments.length === 1 ? "" : "s"}</Badge>
                 </div>
               </div>
 
-              <div className="mt-5 rounded-[26px] border border-slate/10 bg-sand/45 p-4">
-                <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.16em] text-moss">
-                  Grounded Question
-                </label>
-                <textarea
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Example: What is the urgent prior authorization escalation process?"
-                  className="min-h-44 w-full rounded-[22px] border border-slate/10 bg-white px-4 py-4 text-sm leading-7 text-slate"
-                />
+              <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_15rem]">
+                <div className="rounded-[26px] border border-slate/10 bg-sand/45 p-4">
+                  <label className="mb-3 block text-xs font-semibold uppercase tracking-[0.16em] text-moss">
+                    Grounded Question
+                  </label>
+                  <textarea
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    placeholder="Example: What is the urgent prior authorization escalation process?"
+                    className="min-h-52 w-full rounded-[22px] border border-slate/10 bg-white px-4 py-4 text-sm leading-7 text-slate shadow-sm shadow-white/60 focus:border-clay/35 focus:ring-4 focus:ring-clay/10"
+                  />
+                </div>
+
+                <div className="rounded-[26px] border border-slate/10 bg-[#fbf7ef] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Workflow Scope</p>
+                  <div className="mt-4 space-y-3">
+                    <MiniNote
+                      label="Indexed Corpus"
+                      value={`${indexedDocuments.length} doc${indexedDocuments.length === 1 ? "" : "s"}`}
+                      note={indexedDocuments.length ? "ready to ground answers" : "upload and index a source first"}
+                    />
+                    <MiniNote
+                      label="Applied Filters"
+                      value={activeAnswerFilters.length ? `${activeAnswerFilters.length} active` : "None"}
+                      note={activeAnswerFilters.length ? "answer scope is narrowed" : "all indexed documents included"}
+                    />
+                    <MiniNote
+                      label="Question State"
+                      value={questionIsEmpty ? "Incomplete" : "Ready"}
+                      note={questionIsEmpty ? "enter a question to continue" : "generate when the corpus looks right"}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -511,7 +576,7 @@ export function PhaseOneConsole() {
                   {activeAnswerFilters.length ? (
                     activeAnswerFilters.map((filter) => <Badge key={filter}>{filter}</Badge>)
                   ) : (
-                    <span className="text-sm text-slate/62">No answer filters applied.</span>
+                    <span className="text-sm text-slate/60">No answer filters applied.</span>
                   )}
                 </div>
                 <div className="flex gap-3">
@@ -529,7 +594,7 @@ export function PhaseOneConsole() {
                   <button
                     type="button"
                     onClick={handleAnswer}
-                    disabled={isAnswering || !indexedDocuments.length}
+                    disabled={isAnswering || !indexedDocuments.length || questionIsEmpty}
                     className="rounded-2xl bg-moss px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#58623f] disabled:opacity-60"
                   >
                     {isAnswering ? "Generating..." : "Generate Grounded Answer"}
@@ -538,17 +603,19 @@ export function PhaseOneConsole() {
               </div>
             </section>
 
-            {answerMessage ? (
-              <Banner tone={answerResult?.abstained ? "warning" : "success"}>{answerMessage}</Banner>
-            ) : null}
+            <div aria-live="polite" className="space-y-3">
+              {answerMessage ? (
+                <Banner tone={answerResult?.abstained ? "warning" : "success"}>{answerMessage}</Banner>
+              ) : null}
 
-            {answerError ? <Banner tone="danger">{answerError}</Banner> : null}
+              {answerError ? <Banner tone="danger">{answerError}</Banner> : null}
+            </div>
 
-            <section className="rounded-[30px] border border-slate/10 bg-white p-5 md:p-6">
+            <section className="rounded-[30px] border border-slate/10 bg-white p-5 md:p-6" aria-busy={isAnswering}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-moss">Grounded Answer</p>
-                  <p className="mt-2 text-sm text-slate/68">
+                  <p className="mt-2 text-sm text-slate/70">
                     {answerResult
                       ? answerResult.abstained
                         ? "The model declined to answer confidently from the current evidence."
@@ -568,7 +635,7 @@ export function PhaseOneConsole() {
               {answerResult ? (
                 <>
                   <div className="mt-5 rounded-[26px] border border-slate/10 bg-sand/40 p-6">
-                    <p className="text-[1.02rem] leading-8 text-slate/88">{answerResult.answer}</p>
+                    <p className="text-[1.02rem] leading-8 text-slate/90">{answerResult.answer}</p>
                   </div>
 
                   <div className="mt-5 grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
@@ -578,7 +645,7 @@ export function PhaseOneConsole() {
                         {answerResult.confidence_reasons.map((reason) => (
                           <span
                             key={reason}
-                            className="rounded-full border border-slate/10 bg-white px-3 py-2 text-sm text-slate/78"
+                            className="rounded-full border border-slate/10 bg-white px-3 py-2 text-sm text-slate/80"
                           >
                             {reason}
                           </span>
@@ -605,7 +672,7 @@ export function PhaseOneConsole() {
                                 Citation {index + 1}
                               </p>
                               <p className="mt-1 text-sm font-semibold text-slate">{citation.document_title}</p>
-                              <p className="mt-1 text-sm text-slate/68">
+                              <p className="mt-1 text-sm text-slate/70">
                                 {citation.section_path ?? "General section"} | pages {citation.page_start}-{citation.page_end}
                               </p>
                             </button>
@@ -633,7 +700,7 @@ export function PhaseOneConsole() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-moss">Grounding Scope</p>
-                  <p className="mt-2 text-sm leading-6 text-slate/68">
+                  <p className="mt-2 text-sm leading-6 text-slate/70">
                     The answer workflow only has access to indexed documents and the filters you apply here.
                   </p>
                 </div>
@@ -655,7 +722,7 @@ export function PhaseOneConsole() {
                   {activeAnswerFilters.length ? (
                     activeAnswerFilters.map((filter) => <Badge key={filter}>{filter}</Badge>)
                   ) : (
-                    <span className="text-sm text-slate/62">All indexed documents are in scope.</span>
+                    <span className="text-sm text-slate/60">All indexed documents are in scope.</span>
                   )}
                 </div>
               </div>
@@ -665,7 +732,7 @@ export function PhaseOneConsole() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-moss">Evidence Explorer</p>
-                  <p className="mt-2 text-sm text-slate/68">
+                  <p className="mt-2 text-sm text-slate/70">
                     Review the top retrieved chunks and the selected source excerpt in one place.
                   </p>
                 </div>
@@ -689,16 +756,16 @@ export function PhaseOneConsole() {
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">Result {index + 1}</p>
-                            <h3 className="mt-1 font-[var(--font-display)] text-lg font-semibold text-slate">
+                            <h3 className="mt-1 [font-family:var(--font-display)] text-lg font-semibold text-slate">
                               {chunk.document_title}
                             </h3>
-                            <p className="mt-1 text-sm text-slate/68">
+                            <p className="mt-1 text-sm text-slate/70">
                               {chunk.section_path ?? "General section"} | pages {chunk.page_start}-{chunk.page_end}
                             </p>
                           </div>
                           <Badge>{chunk.score.toFixed(3)}</Badge>
                         </div>
-                        <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate/78">{chunk.text}</p>
+                        <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate/80">{chunk.text}</p>
                       </button>
                     ))}
                   </div>
@@ -709,10 +776,10 @@ export function PhaseOneConsole() {
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Selected Evidence</p>
-                            <h3 className="mt-2 font-[var(--font-display)] text-xl font-semibold text-slate">
+                            <h3 className="mt-2 [font-family:var(--font-display)] text-xl font-semibold text-slate">
                               {selectedEvidence.document_title}
                             </h3>
-                            <p className="mt-1 text-sm text-slate/68">
+                            <p className="mt-1 text-sm text-slate/70">
                               {selectedEvidence.section_path ?? "General section"} | pages {selectedEvidence.page_start}-
                               {selectedEvidence.page_end}
                             </p>
@@ -721,21 +788,21 @@ export function PhaseOneConsole() {
                         </div>
 
                         {selectedCitation?.support ? (
-                          <div className="rounded-2xl border border-[#d8ccb5] bg-[#fff8ee] px-4 py-3 text-sm text-slate/78">
+                          <div className="rounded-2xl border border-[#d8ccb5] bg-[#fff8ee] px-4 py-3 text-sm text-slate/80">
                             {selectedCitation.support}
                           </div>
                         ) : null}
 
                         <div className="rounded-2xl border border-slate/10 bg-white p-4">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Quoted Preview</p>
-                          <p className="mt-3 text-sm leading-7 text-slate/84">
+                          <p className="mt-3 text-sm leading-7 text-slate/85">
                             {selectedCitation?.quote_preview ?? truncateText(selectedEvidence.text, 320)}
                           </p>
                         </div>
 
                         <div className="max-h-[18rem] overflow-y-auto rounded-2xl border border-slate/10 bg-white p-4">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Full Chunk Text</p>
-                          <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate/84">{selectedEvidence.text}</p>
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate/85">{selectedEvidence.text}</p>
                         </div>
                       </div>
                     ) : (
@@ -755,20 +822,27 @@ export function PhaseOneConsole() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-[34px] border border-white/70 bg-paper/92 p-6 shadow-card backdrop-blur md:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-[0.26em] text-clay">Corpus Operations</p>
-            <h2 className="font-[var(--font-display)] text-3xl font-bold text-slate md:text-[2.45rem]">
-              Ingest, Monitor, And Manage Source Documents
+      <section className="rounded-[32px] border border-white/80 bg-paper/92 p-6 shadow-card backdrop-blur md:p-7">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap gap-2">
+              <Badge>document ingestion</Badge>
+              <Badge>searchable corpus registry</Badge>
+              <Badge tone={attentionDocuments.length ? "warning" : "success"}>
+                {attentionDocuments.length ? "attention required" : "corpus healthy"}
+              </Badge>
+            </div>
+            <p className="mt-4 text-sm font-medium uppercase tracking-[0.26em] text-clay">Corpus Operations</p>
+            <h2 className="mt-3 [font-family:var(--font-display)] text-3xl font-bold leading-[1.02] text-slate md:text-[2.45rem]">
+              Ingest, monitor, and manage the source documents behind the answers.
             </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate/74">
-              Corpus management is secondary to asking questions, but it needs to stay operationally clear: documents
-              must be searchable, current, and easy to inspect at scale.
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate/75">
+              Corpus management is secondary to asking questions, but it still needs to feel operationally clear:
+              documents must be searchable, current, and easy to inspect at scale.
             </p>
           </div>
-          <div className="rounded-full border border-slate/10 bg-sand px-4 py-2 text-sm text-slate">
-            API: {apiBaseUrl}
+          <div className="rounded-full border border-slate/10 bg-sand px-4 py-2 text-sm text-slate/75">
+            API endpoint: {apiBaseUrl}
           </div>
         </div>
 
@@ -777,7 +851,7 @@ export function PhaseOneConsole() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-moss">Ingestion Flow</p>
-                <p className="mt-2 text-sm leading-6 text-slate/68">
+                <p className="mt-2 text-sm leading-6 text-slate/70">
                   Add a new source document to the corpus. Uploading triggers storage, parsing, chunking, embedding, and
                   index registration automatically.
                 </p>
@@ -797,9 +871,8 @@ export function PhaseOneConsole() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-lg font-semibold text-slate">{file ? "Replace Selected File" : "Choose Source PDF"}</p>
-                    <p className="mt-2 text-sm leading-6 text-slate/68">
-                      Best results come from text-based healthcare policy, manual, and procedure PDFs with clear section
-                      structure.
+                    <p className="mt-2 text-sm leading-6 text-slate/70">
+                      Best results come from text-based policy, manual, and procedure PDFs with clear section structure.
                     </p>
                   </div>
                   <span className="rounded-full border border-slate/10 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-moss">
@@ -815,8 +888,9 @@ export function PhaseOneConsole() {
 
                 <div className="mt-6 rounded-[22px] border border-slate/10 bg-white px-4 py-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Selected File</p>
-                  <p className="mt-2 text-sm text-slate/78">
-                    {file ? file.name : "No file selected yet. Click here to choose a PDF for ingestion."}
+                  <p className="mt-2 text-sm text-slate/80">{uploadFileLabel}</p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.14em] text-slate/50">
+                    Text-based PDFs index best. Reindex existing sources from the registry below.
                   </p>
                 </div>
               </label>
@@ -832,12 +906,12 @@ export function PhaseOneConsole() {
             </div>
 
             <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <p className="text-sm leading-6 text-slate/66">
+              <p className="text-sm leading-6 text-slate/65">
                 Use upload when adding a new source. Use reindex from the registry when reprocessing an existing document.
               </p>
               <button
                 type="submit"
-                disabled={isUploading}
+                disabled={isUploading || !file}
                 className="rounded-2xl bg-slate px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#101820] disabled:opacity-60"
               >
                 {isUploading ? "Uploading & Indexing..." : "Upload & Index"}
@@ -849,7 +923,7 @@ export function PhaseOneConsole() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-moss">Corpus Health</p>
-                <p className="mt-2 text-sm leading-6 text-slate/68">
+                <p className="mt-2 text-sm leading-6 text-slate/70">
                   Track overall readiness and quickly spot records that need operational attention.
                 </p>
               </div>
@@ -870,7 +944,7 @@ export function PhaseOneConsole() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <Badge>{activePolicies.length} active {activePolicies.length === 1 ? "policy" : "policies"}</Badge>
                 <Badge>{documents.length - activePolicies.length} non-active or unspecified</Badge>
-                <Badge>{documents.length ? Math.round((indexedDocuments.length / documents.length) * 100) : 0}% indexed</Badge>
+                <Badge>{indexedRate}% indexed</Badge>
               </div>
             </div>
           </div>
@@ -881,7 +955,7 @@ export function PhaseOneConsole() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">Latest Corpus Event</p>
-                <p className="mt-2 text-sm leading-6 text-slate/78">
+                <p className="mt-2 text-sm leading-6 text-slate/80">
                   {latestCorpusEvent.action_label} for {latestCorpusEvent.title}.
                 </p>
               </div>
@@ -893,14 +967,16 @@ export function PhaseOneConsole() {
           </div>
         ) : null}
 
-        {libraryMessage ? <Banner tone="success" className="mt-5">{libraryMessage}</Banner> : null}
-        {libraryError ? <Banner tone="danger" className="mt-5">{libraryError}</Banner> : null}
+        <div aria-live="polite" className="space-y-3">
+          {libraryMessage ? <Banner tone="success" className="mt-5">{libraryMessage}</Banner> : null}
+          {libraryError ? <Banner tone="danger" className="mt-5">{libraryError}</Banner> : null}
+        </div>
 
-        <section className="mt-6 rounded-[30px] border border-slate/10 bg-white p-5 md:p-6">
+        <section className="mt-6 rounded-[30px] border border-slate/10 bg-white p-5 md:p-6" aria-busy={isLoadingDocuments}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-moss">Corpus Registry</p>
-              <p className="mt-2 text-sm leading-6 text-slate/68">
+              <p className="mt-2 text-sm leading-6 text-slate/70">
                 Browse the corpus with pagination, inspect metadata in a detail drawer, and take deliberate reindex or
                 delete actions.
               </p>
@@ -915,122 +991,144 @@ export function PhaseOneConsole() {
             </button>
           </div>
 
-          <div className="mt-5 grid gap-3 xl:grid-cols-[1.3fr_repeat(3,minmax(0,0.82fr))]">
-            <SearchField label="Search Library" value={documentSearch} onChange={setDocumentSearch} />
-            <FilterSelect
-              label="Status"
-              value={documentStatusFilter}
-              options={ingestionStatusOptions}
-              onChange={setDocumentStatusFilter}
-            />
-            <FilterSelect
-              label="Document Type"
-              value={libraryDocumentTypeFilter}
-              options={documentTypeOptions}
-              onChange={setLibraryDocumentTypeFilter}
-            />
-            <FilterSelect
-              label="Department"
-              value={libraryDepartmentFilter}
-              options={departmentOptions}
-              onChange={setLibraryDepartmentFilter}
-            />
-          </div>
-
-          <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <p className="text-sm leading-6 text-slate/68">
-              Showing {paginatedDocuments.length ? pageStartIndex + 1 : 0}-
-              {Math.min(pageStartIndex + paginatedDocuments.length, filteredDocuments.length)} of {filteredDocuments.length}
-              {" "}document{filteredDocuments.length === 1 ? "" : "s"}.
-            </p>
-
-            <div className="flex flex-wrap gap-3">
+          <div className="mt-5 rounded-[24px] border border-slate/10 bg-sand/25 p-4">
+            <div className="grid gap-3 xl:grid-cols-[1.3fr_repeat(3,minmax(0,0.82fr))]">
+              <SearchField label="Search Library" value={documentSearch} onChange={setDocumentSearch} />
               <FilterSelect
-                label="Sort"
-                value={documentSort}
-                options={documentSortOptions}
-                onChange={(value) => setDocumentSort(value as DocumentSort)}
-                showAllOption={false}
-                formatOptionLabel={formatSortLabel}
-                containerClassName="min-w-[11rem]"
+                label="Status"
+                value={documentStatusFilter}
+                options={ingestionStatusOptions}
+                onChange={setDocumentStatusFilter}
               />
               <FilterSelect
-                label="Rows"
-                value={String(pageSize)}
-                options={pageSizeOptions.map(String)}
-                onChange={(value) => setPageSize(Number(value))}
-                showAllOption={false}
-                containerClassName="min-w-[7rem]"
+                label="Document Type"
+                value={libraryDocumentTypeFilter}
+                options={documentTypeOptions}
+                onChange={setLibraryDocumentTypeFilter}
               />
-              <DensityToggle value={density} onChange={setDensity} />
-              {hasLibraryFilters ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDocumentSearch("");
-                    setDocumentStatusFilter("all");
-                    setLibraryDocumentTypeFilter("all");
-                    setLibraryDepartmentFilter("all");
-                  }}
-                  className="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-semibold text-slate transition hover:bg-sand"
-                >
-                  Clear Filters
-                </button>
-              ) : null}
+              <FilterSelect
+                label="Department"
+                value={libraryDepartmentFilter}
+                options={departmentOptions}
+                onChange={setLibraryDepartmentFilter}
+              />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <p className="text-sm leading-6 text-slate/70">
+                Showing {paginatedDocuments.length ? pageStartIndex + 1 : 0}-
+                {Math.min(pageStartIndex + paginatedDocuments.length, filteredDocuments.length)} of {filteredDocuments.length}
+                {" "}document{filteredDocuments.length === 1 ? "" : "s"}.
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+                <FilterSelect
+                  label="Sort"
+                  value={documentSort}
+                  options={documentSortOptions}
+                  onChange={(value) => setDocumentSort(value as DocumentSort)}
+                  showAllOption={false}
+                  formatOptionLabel={formatSortLabel}
+                  containerClassName="min-w-[11rem]"
+                />
+                <FilterSelect
+                  label="Rows"
+                  value={String(pageSize)}
+                  options={pageSizeOptions.map(String)}
+                  onChange={(value) => setPageSize(Number(value))}
+                  showAllOption={false}
+                  containerClassName="min-w-[7rem]"
+                />
+                <DensityToggle value={density} onChange={setDensity} />
+                {hasLibraryFilters ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentSearch("");
+                      setDocumentStatusFilter("all");
+                      setLibraryDocumentTypeFilter("all");
+                      setLibraryDepartmentFilter("all");
+                    }}
+                    className="rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm font-semibold text-slate transition hover:bg-sand"
+                  >
+                    Clear Filters
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
 
           <div className="mt-5 overflow-hidden rounded-[24px] border border-slate/10">
             {isLoadingDocuments && !documents.length ? (
               <div className="space-y-3 bg-white px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate/55">Syncing corpus registry</p>
                 {Array.from({ length: 6 }).map((_, index) => (
                   <div key={index} className="h-16 animate-pulse rounded-2xl bg-sand/55" />
                 ))}
               </div>
             ) : filteredDocuments.length ? (
-              <div className="overflow-auto">
-                <table className="w-full min-w-[980px] border-collapse">
-                  <thead className="bg-sand/65 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/65">
-                    <tr>
-                      <th className="px-4 py-3">Document</th>
-                      <th className="px-4 py-3">Corpus Status</th>
-                      <th className="px-4 py-3">Classification</th>
-                      <th className="px-4 py-3">Coverage</th>
-                      <th className="px-4 py-3">Freshness</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {paginatedDocuments.map((document) => (
-                      <DocumentRow
-                        key={document.id}
-                        document={document}
-                        density={density}
-                        isDeleting={deletingId === document.id}
-                        isReindexing={reindexingId === document.id}
-                        isSelected={selectedDocumentId === document.id}
-                        onDelete={() => setDeleteTargetId(document.id)}
-                        onOpen={() => setSelectedDocumentId(document.id)}
-                        onReindex={() => void handleReindex(document)}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="hidden overflow-auto lg:block">
+                  <table className="w-full min-w-[980px] border-collapse">
+                    <thead className="bg-sand/65 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/65">
+                      <tr>
+                        <th className="px-4 py-3">Document</th>
+                        <th className="px-4 py-3">Corpus Status</th>
+                        <th className="px-4 py-3">Classification</th>
+                        <th className="px-4 py-3">Coverage</th>
+                        <th className="px-4 py-3">Freshness</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white">
+                      {paginatedDocuments.map((document) => (
+                        <DocumentRow
+                          key={document.id}
+                          document={document}
+                          density={density}
+                          isDeleting={deletingId === document.id}
+                          isReindexing={reindexingId === document.id}
+                          isSelected={selectedDocumentId === document.id}
+                          onDelete={() => setDeleteTargetId(document.id)}
+                          onOpen={() => setSelectedDocumentId(document.id)}
+                          onReindex={() => void handleReindex(document)}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="space-y-3 bg-white p-4 lg:hidden">
+                  {paginatedDocuments.map((document) => (
+                    <DocumentMobileCard
+                      key={document.id}
+                      document={document}
+                      isDeleting={deletingId === document.id}
+                      isReindexing={reindexingId === document.id}
+                      isSelected={selectedDocumentId === document.id}
+                      onDelete={() => setDeleteTargetId(document.id)}
+                      onOpen={() => setSelectedDocumentId(document.id)}
+                      onReindex={() => void handleReindex(document)}
+                    />
+                  ))}
+                </div>
+              </>
             ) : documents.length ? (
-              <div className="bg-white px-5 py-10 text-sm leading-6 text-slate/65">
-                No documents match the current search and filters.
-              </div>
+              <EmptyState
+                title="No documents match the current search"
+                description="Try clearing one or more filters, broadening the search term, or switching the sort order."
+              />
             ) : (
-              <div className="bg-white px-5 py-10 text-sm leading-6 text-slate/65">
-                No documents in the corpus yet. Upload the first policy PDF to create a searchable source set.
-              </div>
+              <EmptyState
+                title="The corpus is empty"
+                description="Upload the first policy PDF to create a searchable source set for grounded answers."
+              />
             )}
           </div>
 
           {filteredDocuments.length ? (
             <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <p className="text-sm text-slate/66">
+              <p className="text-sm text-slate/65">
                 Page {currentPage} of {totalPages}
               </p>
               <div className="flex flex-wrap items-center gap-2">
@@ -1052,6 +1150,7 @@ export function PhaseOneConsole() {
                       key={item}
                       type="button"
                       onClick={() => setCurrentPage(item)}
+                      aria-current={item === currentPage ? "page" : undefined}
                       className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
                         item === currentPage
                           ? "bg-slate text-white"
@@ -1095,7 +1194,31 @@ export function PhaseOneConsole() {
           onConfirm={() => void handleDeleteConfirm()}
         />
       ) : null}
-    </>
+    </div>
+  );
+}
+
+
+function MiniNote({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="rounded-[20px] border border-slate/10 bg-white px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-moss">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-slate">{value}</p>
+      <p className="mt-1 text-sm leading-6 text-slate/65">{note}</p>
+    </div>
+  );
+}
+
+
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="bg-white px-5 py-12 text-center">
+      <div className="mx-auto max-w-lg rounded-[24px] border border-dashed border-slate/15 bg-sand/25 px-5 py-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Empty State</p>
+        <h3 className="mt-3 [font-family:var(--font-display)] text-2xl font-bold text-slate">{title}</h3>
+        <p className="mt-3 text-sm leading-7 text-slate/70">{description}</p>
+      </div>
+    </div>
   );
 }
 
@@ -1126,8 +1249,8 @@ function DocumentRow({
       <td className={`px-4 ${rowPadding}`}>
         <button type="button" onClick={onOpen} className="text-left">
           <p className="font-semibold text-slate transition hover:text-moss">{document.title}</p>
-          <p className="mt-1 text-sm text-slate/62">{document.source_filename}</p>
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/48">
+          <p className="mt-1 text-sm text-slate/60">{document.source_filename}</p>
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/50">
             ID {document.id.slice(0, 8)}
           </p>
         </button>
@@ -1135,7 +1258,7 @@ function DocumentRow({
       <td className={`px-4 ${rowPadding}`}>
         <div className="space-y-2">
           <Badge tone={statusTone(document.ingestion_status)}>{document.ingestion_status}</Badge>
-          <p className="text-sm text-slate/66">
+          <p className="text-sm text-slate/65">
             {document.ingestion_status === "indexed"
               ? "Searchable now"
               : document.ingestion_status === "failed"
@@ -1143,14 +1266,14 @@ function DocumentRow({
                 : "Stored but not searchable"}
           </p>
           {document.policy_status ? (
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/54">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/55">
               {readableLabel(document.policy_status)}
             </span>
           ) : null}
         </div>
       </td>
       <td className={`px-4 ${rowPadding}`}>
-        <div className="space-y-2 text-sm text-slate/72">
+        <div className="space-y-2 text-sm text-slate/70">
           <div className="flex flex-wrap gap-2">
             {document.document_type ? <Badge>{readableLabel(document.document_type)}</Badge> : null}
             {document.department ? <Badge>{readableLabel(document.department)}</Badge> : null}
@@ -1159,7 +1282,7 @@ function DocumentRow({
         </div>
       </td>
       <td className={`px-4 ${rowPadding}`}>
-        <div className="space-y-2 text-sm text-slate/72">
+        <div className="space-y-2 text-sm text-slate/70">
           <p>
             {document.page_count} page{document.page_count === 1 ? "" : "s"}
           </p>
@@ -1169,7 +1292,7 @@ function DocumentRow({
         </div>
       </td>
       <td className={`px-4 ${rowPadding}`}>
-        <div className="space-y-2 text-sm text-slate/72">
+        <div className="space-y-2 text-sm text-slate/70">
           <p>{formatDate(document.updated_at)}</p>
           <p>Effective {formatDate(document.effective_date)}</p>
         </div>
@@ -1206,6 +1329,82 @@ function DocumentRow({
 }
 
 
+function DocumentMobileCard({
+  document,
+  isDeleting,
+  isReindexing,
+  isSelected,
+  onDelete,
+  onOpen,
+  onReindex,
+}: {
+  document: DocumentItem;
+  isDeleting: boolean;
+  isReindexing: boolean;
+  isSelected: boolean;
+  onDelete: () => void;
+  onOpen: () => void;
+  onReindex: () => void;
+}) {
+  return (
+    <article className={`rounded-[24px] border p-4 transition ${isSelected ? "border-moss bg-[#f8fbf4]" : "border-slate/10 bg-white"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate">{document.title}</p>
+          <p className="mt-1 text-sm text-slate/60">{document.source_filename}</p>
+        </div>
+        <Badge tone={statusTone(document.ingestion_status)}>{document.ingestion_status}</Badge>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <MiniNote
+          label="Classification"
+          value={
+            document.document_type
+              ? readableLabel(document.document_type)
+              : document.department
+                ? readableLabel(document.department)
+                : "Not detected"
+          }
+          note={document.policy_status ? readableLabel(document.policy_status) : "policy status not set"}
+        />
+        <MiniNote
+          label="Coverage"
+          value={`${document.page_count} page${document.page_count === 1 ? "" : "s"}`}
+          note={`${document.chunk_count} chunk${document.chunk_count === 1 ? "" : "s"} indexed`}
+        />
+      </div>
+
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="rounded-2xl border border-slate/10 bg-white px-3 py-2 text-sm font-semibold text-slate transition hover:bg-sand"
+        >
+          Open
+        </button>
+        <button
+          type="button"
+          onClick={onReindex}
+          disabled={isReindexing || isDeleting}
+          className="rounded-2xl bg-clay px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#a45736] disabled:opacity-60"
+        >
+          {isReindexing ? "Working..." : document.ingestion_status === "indexed" ? "Reindex" : "Index"}
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={isDeleting || isReindexing}
+          className="rounded-2xl border border-[#d9a37f] bg-[#fff1e8] px-3 py-2 text-sm font-semibold text-[#9a4129] transition hover:bg-[#ffe8db] disabled:opacity-60"
+        >
+          {isDeleting ? "Deleting..." : "Delete"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+
 function DocumentDetailDrawer({
   document,
   reindexingId,
@@ -1222,7 +1421,7 @@ function DocumentDetailDrawer({
   onDelete: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="document-detail-title">
       <button
         type="button"
         aria-label="Close document drawer"
@@ -1233,8 +1432,10 @@ function DocumentDetailDrawer({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">Document Details</p>
-            <h3 className="mt-2 font-[var(--font-display)] text-3xl font-bold text-slate">{document.title}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate/68">{document.source_filename}</p>
+            <h3 id="document-detail-title" className="mt-2 [font-family:var(--font-display)] text-3xl font-bold text-slate">
+              {document.title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate/70">{document.source_filename}</p>
           </div>
           <button
             type="button"
@@ -1254,7 +1455,7 @@ function DocumentDetailDrawer({
 
         <div className="mt-6 rounded-[24px] border border-slate/10 bg-white p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Corpus State</p>
-          <p className="mt-3 text-sm leading-7 text-slate/78">
+          <p className="mt-3 text-sm leading-7 text-slate/80">
             {document.ingestion_status === "indexed"
               ? "This document is currently part of the searchable corpus and can ground retrieval and generated answers."
               : document.ingestion_status === "failed"
@@ -1286,7 +1487,7 @@ function DocumentDetailDrawer({
 
         <div className="mt-5 rounded-[24px] border border-slate/10 bg-white p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Operational Details</p>
-          <div className="mt-4 space-y-3 text-sm text-slate/78">
+          <div className="mt-4 space-y-3 text-sm text-slate/80">
             <InfoRow label="Document ID" value={document.id} />
             <InfoRow label="Source File" value={document.source_filename} />
             <InfoRow label="Parse Error" value={document.parse_error ?? "None"} tone={document.parse_error ? "danger" : "neutral"} />
@@ -1335,12 +1536,12 @@ function DeleteConfirmationDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-5" role="dialog" aria-modal="true" aria-labelledby="delete-document-title" aria-describedby="delete-document-description">
       <button type="button" aria-label="Close delete dialog" onClick={onCancel} className="absolute inset-0 bg-slate/40" />
       <div className="relative w-full max-w-lg rounded-[30px] border border-slate/10 bg-white p-6 shadow-2xl">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-clay">Delete Document</p>
-        <h3 className="mt-3 font-[var(--font-display)] text-3xl font-bold text-slate">{document.title}</h3>
-        <p className="mt-3 text-sm leading-7 text-slate/76">
+        <h3 id="delete-document-title" className="mt-3 [font-family:var(--font-display)] text-3xl font-bold text-slate">{document.title}</h3>
+        <p id="delete-document-description" className="mt-3 text-sm leading-7 text-slate/75">
           This removes the document from the RAG corpus. The stored PDF, processed artifact, document record, and any
           indexed vector entries for this document will be removed.
         </p>
@@ -1381,8 +1582,8 @@ function DeleteConfirmationDialog({
 function TopMetric({ label, value }: { label: string; value: string }) {
   return (
     <article className="min-w-[8.5rem] rounded-[22px] border border-slate/10 bg-white px-4 py-4 text-center">
-      <p className="font-[var(--font-display)] text-3xl font-bold text-slate">{value}</p>
-      <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/58">{label}</p>
+      <p className="[font-family:var(--font-display)] text-3xl font-bold text-slate">{value}</p>
+      <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate/60">{label}</p>
     </article>
   );
 }
@@ -1392,8 +1593,8 @@ function MetricCard({ label, value, note }: { label: string; value: string; note
   return (
     <article className="rounded-[24px] border border-slate/10 bg-sand/45 p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">{label}</p>
-      <p className="mt-2 font-[var(--font-display)] text-3xl font-bold text-slate">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-slate/66">{note}</p>
+      <p className="mt-2 [font-family:var(--font-display)] text-3xl font-bold text-slate">{value}</p>
+      <p className="mt-2 text-sm leading-6 text-slate/65">{note}</p>
     </article>
   );
 }
@@ -1416,7 +1617,7 @@ function SearchField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Search title, file, department..."
-        className="w-full rounded-2xl border border-slate/10 bg-sand/55 px-4 py-3 text-sm text-slate"
+        className="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm text-slate shadow-sm shadow-white/60 focus:border-clay/35 focus:ring-4 focus:ring-clay/10"
       />
     </label>
   );
@@ -1446,7 +1647,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-2xl border border-slate/10 bg-sand/55 px-4 py-3 text-sm text-slate"
+        className="w-full rounded-2xl border border-slate/10 bg-white px-4 py-3 text-sm text-slate shadow-sm shadow-white/60 focus:border-clay/35 focus:ring-4 focus:ring-clay/10"
       >
         {showAllOption ? <option value="all">All</option> : null}
         {options.map((option) => (
@@ -1475,6 +1676,7 @@ function DensityToggle({
             key={option}
             type="button"
             onClick={() => onChange(option)}
+            aria-pressed={value === option}
             className={`rounded-[18px] px-3 py-2 text-sm font-semibold transition ${
               value === option ? "bg-slate text-white" : "text-slate hover:bg-sand"
             }`}
@@ -1496,7 +1698,7 @@ function StepRow({ number, title, detail }: { number: string; title: string; det
       </div>
       <div>
         <p className="text-sm font-semibold text-slate">{title}</p>
-        <p className="mt-1 text-sm leading-6 text-slate/66">{detail}</p>
+        <p className="mt-1 text-sm leading-6 text-slate/65">{detail}</p>
       </div>
     </div>
   );
@@ -1525,7 +1727,7 @@ function InfoRow({
   return (
     <div className="rounded-2xl border border-slate/10 bg-sand/30 px-4 py-3">
       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-moss">{label}</p>
-      <p className={`mt-2 break-all text-sm ${tone === "danger" ? "text-[#9a4129]" : "text-slate/78"}`}>{value}</p>
+      <p className={`mt-2 break-all text-sm ${tone === "danger" ? "text-[#9a4129]" : "text-slate/80"}`}>{value}</p>
     </div>
   );
 }
@@ -1547,7 +1749,7 @@ function Banner({
         ? "border-[#ead6ab] bg-[#fff8e6] text-[#8c5a14]"
         : tone === "danger"
           ? "border-[#d9a37f] bg-[#fff1e8] text-[#8d4d27]"
-          : "border-slate/10 bg-white text-slate/78";
+          : "border-slate/10 bg-white text-slate/80";
 
   return <div className={`${className ?? ""} rounded-2xl border px-4 py-3 text-sm ${toneClass}`}>{children}</div>;
 }
@@ -1562,12 +1764,12 @@ function Badge({
 }) {
   const toneClass =
     tone === "success"
-      ? "bg-[#edf6ea] text-[#3f6a30]"
+      ? "border border-[#d1e4c8] bg-[#edf6ea] text-[#3f6a30]"
       : tone === "warning"
-        ? "bg-[#fff3dd] text-[#8c5a14]"
+        ? "border border-[#ead6ab] bg-[#fff3dd] text-[#8c5a14]"
         : tone === "danger"
-          ? "bg-[#fee9e5] text-[#9a4129]"
-          : "bg-sand text-slate";
+          ? "border border-[#d9a37f] bg-[#fee9e5] text-[#9a4129]"
+          : "border border-slate/10 bg-sand text-slate";
 
   return (
     <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${toneClass}`}>
@@ -1655,6 +1857,17 @@ function formatDate(value: string | null): string {
     day: "numeric",
     year: "numeric",
   }).format(date);
+}
+
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 
