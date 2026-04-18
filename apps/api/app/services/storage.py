@@ -27,10 +27,17 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def delete_path(path: Path) -> bool:
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
 def raw_document_path(document_id: str, filename: str) -> Path:
     return settings.raw_documents_dir / f"{document_id}-{sanitize_filename(filename)}"
 
 
 def processed_document_path(document_id: str) -> Path:
     return settings.processed_documents_dir / f"{document_id}.json"
-

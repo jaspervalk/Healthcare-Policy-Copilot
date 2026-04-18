@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -53,6 +54,15 @@ class IndexDocumentResponse(BaseModel):
     embedding_dimensions: int
 
 
+class DeleteDocumentResponse(BaseModel):
+    document_id: str
+    title: str
+    deleted_chunk_count: int
+    removed_from_index: bool
+    raw_file_deleted: bool
+    processed_artifact_deleted: bool
+
+
 class QueryFilters(BaseModel):
     department: str | None = None
     document_type: str | None = None
@@ -83,3 +93,33 @@ class QueryResponse(BaseModel):
     embedding_provider: str
     top_k: int
     results: list[QueryChunkResult]
+
+
+class AnswerRequest(QueryRequest):
+    pass
+
+
+class AnswerCitation(BaseModel):
+    chunk_id: str
+    document_id: str
+    document_title: str
+    source_filename: str
+    section_path: str | None
+    page_start: int
+    page_end: int
+    score: float
+    quote_preview: str
+    support: str | None = None
+
+
+class AnswerResponse(BaseModel):
+    question: str
+    answer: str
+    abstained: bool
+    confidence: Literal["high", "medium", "low"]
+    confidence_reasons: list[str]
+    answer_model: str
+    embedding_provider: str
+    top_k: int
+    citations: list[AnswerCitation]
+    retrieved_chunks: list[QueryChunkResult]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import islice
 
 from app.core.config import settings
 
@@ -25,11 +26,21 @@ class QdrantIndexService:
             raise RuntimeError("qdrant-client is not installed")
 
         if settings.qdrant_url:
-            self.client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
+            self.client = QdrantClient(
+                url=settings.qdrant_url,
+                api_key=settings.qdrant_api_key,
+                timeout=settings.qdrant_timeout_seconds,
+            )
         else:
             self.client = QdrantClient(path=str(settings.qdrant_local_path))
 
         self.collection_name = settings.qdrant_collection_name
+
+    @staticmethod
+    def _batched(points: list, size: int):
+        iterator = iter(points)
+        while batch := list(islice(iterator, size)):
+            yield batch
 
     def _ensure_payload_indexes(self) -> None:
         indexed_fields = {
@@ -102,7 +113,13 @@ class QdrantIndexService:
             }
             points.append(models.PointStruct(id=chunk["id"], vector=vector, payload=payload))
 
-        self.client.upsert(collection_name=self.collection_name, points=points)
+        for batch in self._batched(points, max(1, settings.qdrant_upsert_batch_size)):
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=batch,
+                wait=True,
+                timeout=settings.qdrant_timeout_seconds,
+            )
 
     def delete_document_chunks(self, document_id: str) -> None:
         try:
@@ -120,7 +137,12 @@ class QdrantIndexService:
                 ]
             )
         )
-        self.client.delete(collection_name=self.collection_name, points_selector=selector)
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=selector,
+            wait=True,
+            timeout=settings.qdrant_timeout_seconds,
+        )
 
     def search(self, vector: list[float], limit: int, filters: dict[str, str] | None = None) -> list[SearchHit]:
         filter_conditions = []

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 
-from app.schemas import QueryRequest, QueryResponse
+from app.schemas import AnswerRequest, AnswerResponse, QueryRequest, QueryResponse
+from app.services.answering import AnsweringService
 from app.services.retrieval import RetrievalService
 
 
@@ -26,3 +27,15 @@ def query_documents(request: QueryRequest) -> QueryResponse:
         results=results,
     )
 
+
+@router.post("/answer", response_model=AnswerResponse)
+def answer_question(request: AnswerRequest) -> AnswerResponse:
+    try:
+        answer_service = AnsweringService()
+        return answer_service.answer(
+            question=request.question,
+            top_k=request.top_k,
+            filters=request.filters,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

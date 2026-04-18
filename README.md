@@ -8,6 +8,7 @@ Phase 1 foundation for a healthcare-policy retrieval system with:
 - chunking and metadata extraction
 - dense embeddings
 - Qdrant indexing
+- answer generation grounded in retrieved chunks
 - retrieval endpoint that returns top supporting chunks
 
 ## Repository Layout
@@ -83,6 +84,7 @@ QDRANT_URL=http://localhost:6333
 - `GET /api/documents`
 - `GET /api/documents/{document_id}`
 - `POST /api/documents/{document_id}/index` manually reindexes an existing document
+- `POST /api/answer`
 - `POST /api/query`
 
 ## Notes
@@ -90,3 +92,4 @@ QDRANT_URL=http://localhost:6333
 - Upload and indexing are synchronous in Phase 1 for simplicity.
 - PDF parsing starts with text-based PDFs. OCR is intentionally deferred.
 - Retrieval supports metadata filters for `department`, `document_type`, and `policy_status`.
+- `POST /api/answer` generates a grounded answer and returns citations plus the underlying retrieved chunks.

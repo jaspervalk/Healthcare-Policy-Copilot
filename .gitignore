@@ -5,6 +5,7 @@
 __pycache__/
 *.pyc
 projects.md
+raw_pdfs_real/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

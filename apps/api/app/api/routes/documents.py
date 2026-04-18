@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas import DocumentRead, IndexDocumentResponse, UploadDocumentResponse
-from app.services.documents import create_document_from_upload, get_document, index_document, list_documents
+from app.schemas import DeleteDocumentResponse, DocumentRead, IndexDocumentResponse, UploadDocumentResponse
+from app.services.documents import create_document_from_upload, delete_document, get_document, index_document, list_documents
 
 
 router = APIRouter()
@@ -81,4 +81,25 @@ def index_document_by_id(document_id: str, db: Session = Depends(get_db)) -> Ind
         return _index_payload(indexed_document, chunk_count, provider, dimensions)
     except Exception as exc:
         _mark_document_failed(db, document_id, str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.delete("/{document_id}", response_model=DeleteDocumentResponse)
+def delete_document_by_id(document_id: str, db: Session = Depends(get_db)) -> DeleteDocumentResponse:
+    document = get_document(db, document_id)
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    try:
+        deleted = delete_document(db, document)
+        return DeleteDocumentResponse(
+            document_id=deleted.document_id,
+            title=deleted.title,
+            deleted_chunk_count=deleted.deleted_chunk_count,
+            removed_from_index=deleted.removed_from_index,
+            raw_file_deleted=deleted.raw_file_deleted,
+            processed_artifact_deleted=deleted.processed_artifact_deleted,
+        )
+    except Exception as exc:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

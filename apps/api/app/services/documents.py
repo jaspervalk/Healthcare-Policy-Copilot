@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
@@ -13,13 +14,23 @@ from app.services.chunking import ChunkDraft, chunk_pages
 from app.services.embeddings import EmbeddingService
 from app.services.pdf_parser import ParsedDocument, parse_pdf
 from app.services.qdrant_index import QdrantIndexService
-from app.services.storage import file_checksum, processed_document_path, raw_document_path, write_bytes, write_json
+from app.services.storage import delete_path, file_checksum, processed_document_path, raw_document_path, write_bytes, write_json
 
 
 DATE_PATTERNS = [
     r"(effective date|effective)\s*[:\-]\s*([A-Za-z]+ \d{1,2}, \d{4})",
     r"(review date|review)\s*[:\-]\s*([A-Za-z]+ \d{1,2}, \d{4})",
 ]
+
+
+@dataclass
+class DeletedDocumentResult:
+    document_id: str
+    title: str
+    deleted_chunk_count: int
+    removed_from_index: bool
+    raw_file_deleted: bool
+    processed_artifact_deleted: bool
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -72,8 +83,8 @@ def _detect_policy_status(text: str) -> str:
 
 
 def _detect_version(text: str) -> str | None:
-    match = re.search(r"\b(?:version|revision|rev\.?)\b\s*[:\-]?\s*([A-Za-z0-9._-]+)", text, re.IGNORECASE)
-    return match.group(2) if match else None
+    match = re.search(r"\b(?:version|revision|rev\.?)\b\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9._-]*)", text, re.IGNORECASE)
+    return match.group(1) if match else None
 
 
 def _extract_date(label: str, text: str) -> date | None:
@@ -206,3 +217,32 @@ def index_document(db: Session, document: Document) -> tuple[Document, int, str,
     db.commit()
     db.refresh(document)
     return document, len(chunk_rows), embedding_batch.provider, embedding_batch.dimensions
+
+
+def delete_document(db: Session, document: Document) -> DeletedDocumentResult:
+    document_id = document.id
+    title = document.title
+    deleted_chunk_count = len(document.chunks)
+    stored_path = Path(document.stored_path) if document.stored_path else None
+    processed_path = processed_document_path(document.id)
+    removed_from_index = document.ingestion_status == "indexed" or deleted_chunk_count > 0
+
+    try:
+        QdrantIndexService().delete_document_chunks(document_id)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to remove vector index entries for {title}: {exc}") from exc
+
+    db.delete(document)
+    db.commit()
+
+    raw_file_deleted = delete_path(stored_path) if stored_path is not None else False
+    processed_artifact_deleted = delete_path(processed_path)
+
+    return DeletedDocumentResult(
+        document_id=document_id,
+        title=title,
+        deleted_chunk_count=deleted_chunk_count,
+        removed_from_index=removed_from_index,
+        raw_file_deleted=raw_file_deleted,
+        processed_artifact_deleted=processed_artifact_deleted,
+    )
