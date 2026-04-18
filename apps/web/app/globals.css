@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-display: "Trebuchet MS", "Arial Narrow", "Avenir Next Condensed", sans-serif;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(192, 106, 67, 0.14), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(111, 122, 83, 0.2), transparent 28%),
+    #f5efe5;
+}
+
+body {
+  min-height: 100vh;
+  color: #1d2733;
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.66), rgba(245, 239, 229, 0.92));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

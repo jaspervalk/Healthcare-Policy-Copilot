@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: healthcare-policy-copilot-postgres
+    environment:
+      POSTGRES_DB: policy_copilot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.4
+    container_name: healthcare-policy-copilot-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+volumes:
+  postgres-data:
+  qdrant-data:
+
