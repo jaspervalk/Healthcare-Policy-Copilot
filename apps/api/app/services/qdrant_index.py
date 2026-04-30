@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from itertools import islice
+from typing import Any
 
 from app.core.config import settings
 
@@ -20,20 +22,50 @@ class SearchHit:
     payload: dict
 
 
+# Process-wide singleton. Embedded Qdrant uses a lockfile that does not tolerate
+# multiple clients against the same path; constructing one per request was a real
+# corruption risk under any concurrency.
+_client: Any = None
+_client_lock = threading.Lock()
+
+
+def _build_client() -> Any:
+    if QdrantClient is None:  # pragma: no cover
+        raise RuntimeError("qdrant-client is not installed")
+    if settings.qdrant_url:
+        return QdrantClient(
+            url=settings.qdrant_url,
+            api_key=settings.qdrant_api_key,
+            timeout=settings.qdrant_timeout_seconds,
+        )
+    return QdrantClient(path=str(settings.qdrant_local_path))
+
+
+def get_qdrant_client() -> Any:
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                _client = _build_client()
+    return _client
+
+
+def close_qdrant_client() -> None:
+    global _client
+    with _client_lock:
+        if _client is not None:
+            try:
+                _client.close()
+            except Exception:
+                pass
+            _client = None
+
+
 class QdrantIndexService:
-    def __init__(self) -> None:
-        if QdrantClient is None or models is None:  # pragma: no cover
+    def __init__(self, client: Any | None = None) -> None:
+        if models is None:  # pragma: no cover
             raise RuntimeError("qdrant-client is not installed")
-
-        if settings.qdrant_url:
-            self.client = QdrantClient(
-                url=settings.qdrant_url,
-                api_key=settings.qdrant_api_key,
-                timeout=settings.qdrant_timeout_seconds,
-            )
-        else:
-            self.client = QdrantClient(path=str(settings.qdrant_local_path))
-
+        self.client = client if client is not None else get_qdrant_client()
         self.collection_name = settings.qdrant_collection_name
 
     @staticmethod
@@ -64,31 +96,47 @@ class QdrantIndexService:
             except Exception:
                 continue
 
-    def ensure_collection(self, dimensions: int) -> None:
-        collection = None
+    def collection_exists(self) -> bool:
+        try:
+            self.client.get_collection(self.collection_name)
+            return True
+        except Exception:
+            return False
+
+    def collection_dimensions(self) -> int | None:
         try:
             collection = self.client.get_collection(self.collection_name)
         except Exception:
-            collection = None
+            return None
+        configured = collection.config.params.vectors
+        return getattr(configured, "size", None)
 
-        if collection is None:
+    def ensure_collection(self, dimensions: int) -> bool:
+        """Ensure the collection exists at the given dimension. Returns True if created."""
+        existing_size = self.collection_dimensions()
+        if existing_size is None:
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=models.VectorParams(size=dimensions, distance=models.Distance.COSINE),
             )
             self._ensure_payload_indexes()
-            return
+            return True
 
-        configured = collection.config.params.vectors
-        size = getattr(configured, "size", None)
-        if size and size != dimensions:
+        if existing_size != dimensions:
             raise RuntimeError(
-                f"Existing Qdrant collection dimension mismatch: expected {dimensions}, found {size}"
+                f"Existing Qdrant collection dimension mismatch: expected {dimensions}, found {existing_size}"
             )
 
         self._ensure_payload_indexes()
+        return False
 
-    def replace_document_chunks(self, document_id: str, chunks: list[dict], vectors: list[list[float]]) -> None:
+    def upsert_chunks(self, document_id: str, chunks: list[dict], vectors: list[list[float]]) -> None:
+        """Delete existing points for this document, then upsert new ones.
+
+        Caller is expected to have already validated the embedding stamp against
+        this collection. This method does not validate provider/model — only the
+        vector dimension.
+        """
         if not chunks:
             return
 
@@ -121,10 +169,12 @@ class QdrantIndexService:
                 timeout=settings.qdrant_timeout_seconds,
             )
 
+    # Back-compat alias; kept until callers move over.
+    def replace_document_chunks(self, document_id: str, chunks: list[dict], vectors: list[list[float]]) -> None:
+        self.upsert_chunks(document_id, chunks, vectors)
+
     def delete_document_chunks(self, document_id: str) -> None:
-        try:
-            self.client.get_collection(self.collection_name)
-        except Exception:
+        if not self.collection_exists():
             return
 
         selector = models.FilterSelector(
@@ -156,26 +206,23 @@ class QdrantIndexService:
                 )
 
         query_filter = models.Filter(must=filter_conditions) if filter_conditions else None
-        try:
-            if hasattr(self.client, "query_points"):
-                response = self.client.query_points(
-                    collection_name=self.collection_name,
-                    query=vector,
-                    limit=limit,
-                    query_filter=query_filter,
-                    with_payload=True,
-                )
-                results = response.points
-            else:  # pragma: no cover
-                results = self.client.search(
-                    collection_name=self.collection_name,
-                    query_vector=vector,
-                    limit=limit,
-                    query_filter=query_filter,
-                    with_payload=True,
-                )
-        except Exception:
-            return []
+        if hasattr(self.client, "query_points"):
+            response = self.client.query_points(
+                collection_name=self.collection_name,
+                query=vector,
+                limit=limit,
+                query_filter=query_filter,
+                with_payload=True,
+            )
+            results = response.points
+        else:  # pragma: no cover
+            results = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=vector,
+                limit=limit,
+                query_filter=query_filter,
+                with_payload=True,
+            )
         return [
             SearchHit(
                 chunk_id=str(result.id),

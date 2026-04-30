@@ -1,9 +1,24 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_admin_token
+from app.api.errors import map_exception
 from app.db import get_db
-from app.schemas import DeleteDocumentResponse, DocumentRead, IndexDocumentResponse, UploadDocumentResponse
-from app.services.documents import create_document_from_upload, delete_document, get_document, index_document, list_documents
+from app.schemas import (
+    DeleteDocumentResponse,
+    DocumentMetadataUpdate,
+    DocumentRead,
+    IndexDocumentResponse,
+    UploadDocumentResponse,
+)
+from app.services.documents import (
+    create_document_from_upload,
+    delete_document,
+    get_document,
+    index_document,
+    list_documents,
+    update_document_metadata,
+)
 
 
 router = APIRouter()
@@ -52,6 +67,7 @@ async def upload_document(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only PDF uploads are supported")
 
+    document = None
     try:
         document = await create_document_from_upload(db, file)
         indexed_document, chunk_count, provider, dimensions = index_document(db, document)
@@ -62,12 +78,10 @@ async def upload_document(
             embedding_provider=provider,
             embedding_dimensions=dimensions,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
-        if "document" in locals():
+        if document is not None:
             _mark_document_failed(db, document.id, str(exc))
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise map_exception(exc) from exc
 
 
 @router.post("/{document_id}/index", response_model=IndexDocumentResponse)
@@ -81,11 +95,42 @@ def index_document_by_id(document_id: str, db: Session = Depends(get_db)) -> Ind
         return _index_payload(indexed_document, chunk_count, provider, dimensions)
     except Exception as exc:
         _mark_document_failed(db, document_id, str(exc))
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise map_exception(exc) from exc
+
+
+@router.patch("/{document_id}", response_model=DocumentRead)
+def patch_document_metadata(
+    document_id: str,
+    update: DocumentMetadataUpdate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_token),
+) -> DocumentRead:
+    document = get_document(db, document_id)
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    updates = update.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields to update; provide at least one editable field.",
+        )
+
+    try:
+        updated = update_document_metadata(db, document, updates)
+    except Exception as exc:
+        db.rollback()
+        raise map_exception(exc) from exc
+
+    return _document_payload(updated)
 
 
 @router.delete("/{document_id}", response_model=DeleteDocumentResponse)
-def delete_document_by_id(document_id: str, db: Session = Depends(get_db)) -> DeleteDocumentResponse:
+def delete_document_by_id(
+    document_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_token),
+) -> DeleteDocumentResponse:
     document = get_document(db, document_id)
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
@@ -102,4 +147,4 @@ def delete_document_by_id(document_id: str, db: Session = Depends(get_db)) -> De
         )
     except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise map_exception(exc) from exc

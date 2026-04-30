@@ -6,8 +6,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
-from app.schemas import AnswerCitation, AnswerResponse, QueryChunkResult, QueryFilters
-from app.services.retrieval import RetrievalService
+from app.schemas import AnswerCitation, AnswerResponse, ConfidenceInputs, QueryChunkResult, QueryFilters
+from app.services.retrieval import RetrievalMode, RetrievalService
 
 try:
     from openai import OpenAI
@@ -16,6 +16,17 @@ except ImportError:  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
+
+
+ConfidenceBucket = Literal["high", "medium", "low"]
+
+_BUCKET_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2}
+_RANK_BUCKET: dict[int, ConfidenceBucket] = {0: "low", 1: "medium", 2: "high"}
+
+# Score thresholds tuned for cosine-normalized text-embedding-3-large vectors.
+# These are conservative; revisit once the eval harness produces calibration data.
+_STRONG_SCORE = 0.55
+_OK_SCORE = 0.35
 
 
 class AnswerCitationDraft(BaseModel):
@@ -29,7 +40,7 @@ class AnswerCitationDraft(BaseModel):
 class AnswerDraft(BaseModel):
     answer: str = Field(description="Direct answer grounded only in the supplied evidence.")
     abstained: bool = Field(description="True when the evidence is insufficient to answer safely.")
-    confidence: Literal["high", "medium", "low"] = Field(
+    confidence: ConfidenceBucket = Field(
         description="Confidence based on evidence quality and consistency."
     )
     confidence_reasons: list[str] = Field(
@@ -40,6 +51,101 @@ class AnswerDraft(BaseModel):
     )
 
 
+def evidence_confidence(
+    citations: list[AnswerCitation],
+    retrieved_chunks: list[QueryChunkResult],
+) -> ConfidenceInputs:
+    """Derive a confidence bucket from retrieval signals only.
+
+    The model's self-reported confidence is taken as a ceiling elsewhere; this function
+    is the floor: it cannot raise confidence beyond what evidence supports.
+    """
+    if not retrieved_chunks:
+        return ConfidenceInputs(
+            top_score=0.0,
+            score_margin=0.0,
+            unique_documents=0,
+            citation_count=0,
+            all_cited_active=False,
+            evidence_bucket="low",
+        )
+
+    top_score = retrieved_chunks[0].score
+    second_score = retrieved_chunks[1].score if len(retrieved_chunks) > 1 else 0.0
+    score_margin = top_score - second_score
+
+    citation_ids = {citation.chunk_id for citation in citations}
+    cited_chunks = [chunk for chunk in retrieved_chunks if chunk.chunk_id in citation_ids]
+    unique_documents = len({chunk.document_id for chunk in cited_chunks})
+
+    known_statuses = [chunk.policy_status for chunk in cited_chunks if chunk.policy_status is not None]
+    if not citations:
+        all_cited_active = False
+    elif not known_statuses:
+        all_cited_active = False
+    else:
+        all_cited_active = all(status == "active" for status in known_statuses)
+
+    bucket = _bucket_from_inputs(
+        top_score=top_score,
+        citation_count=len(citations),
+        unique_documents=unique_documents,
+        all_cited_active=all_cited_active,
+    )
+
+    return ConfidenceInputs(
+        top_score=top_score,
+        score_margin=score_margin,
+        unique_documents=unique_documents,
+        citation_count=len(citations),
+        all_cited_active=all_cited_active,
+        evidence_bucket=bucket,
+    )
+
+
+def _extract_token_usage(response: object) -> dict | None:
+    """Pull token usage out of an OpenAI Responses API response defensively.
+
+    Field names vary slightly across SDK versions; missing values are dropped.
+    """
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    captured: dict = {}
+    for key in ("input_tokens", "output_tokens", "total_tokens", "prompt_tokens", "completion_tokens"):
+        value = getattr(usage, key, None)
+        if value is not None:
+            captured[key] = value
+    return captured or None
+
+
+def combine_confidence(model_bucket: ConfidenceBucket, evidence_bucket: ConfidenceBucket) -> ConfidenceBucket:
+    """Take the lower of the model's self-report and the evidence-derived bucket.
+
+    Evidence is the ceiling — the model can only ever downgrade itself, never inflate.
+    """
+    return _RANK_BUCKET[min(_BUCKET_RANK[model_bucket], _BUCKET_RANK[evidence_bucket])]
+
+
+def _bucket_from_inputs(
+    *,
+    top_score: float,
+    citation_count: int,
+    unique_documents: int,
+    all_cited_active: bool,
+) -> ConfidenceBucket:
+    if (
+        top_score >= _STRONG_SCORE
+        and citation_count >= 2
+        and unique_documents >= 1
+        and all_cited_active
+    ):
+        return "high"
+    if top_score >= _OK_SCORE and citation_count >= 1:
+        return "medium"
+    return "low"
+
+
 class AnsweringService:
     def __init__(self) -> None:
         self.retrieval_service = RetrievalService()
@@ -48,11 +154,18 @@ class AnsweringService:
         if settings.openai_api_key and OpenAI is not None:
             self.client = OpenAI(api_key=settings.openai_api_key)
 
-    def answer(self, question: str, top_k: int, filters: QueryFilters | None = None) -> AnswerResponse:
+    def answer(
+        self,
+        question: str,
+        top_k: int,
+        filters: QueryFilters | None = None,
+        mode: RetrievalMode = "hybrid",
+    ) -> AnswerResponse:
         embedding_provider, retrieved_chunks = self.retrieval_service.search(
             question=question,
             top_k=top_k,
             filters=filters,
+            mode=mode,
         )
 
         if not retrieved_chunks:
@@ -67,6 +180,7 @@ class AnsweringService:
                 top_k=top_k,
                 citations=[],
                 retrieved_chunks=[],
+                confidence_inputs=evidence_confidence(citations=[], retrieved_chunks=[]),
             )
 
         if self.client is None:
@@ -83,7 +197,8 @@ class AnsweringService:
                 model=self.answer_model,
                 instructions=(
                     "You are a healthcare policy assistant. Answer only from the supplied evidence. "
-                    "Do not invent policy details. If the evidence is incomplete or ambiguous, abstain clearly. "
+                    "Do not invent policy details. If the evidence is incomplete or ambiguous, abstain "
+                    "by setting abstained=true and returning an empty citations list. "
                     "Only cite chunk ids that are explicitly provided in the evidence list."
                 ),
                 input=prompt,
@@ -97,26 +212,60 @@ class AnsweringService:
             if parsed is None:
                 raise ValueError("Structured answer generation returned no parsed output.")
 
+            token_usage = _extract_token_usage(response)
             citations = self._citation_records(parsed.citations, retrieved_chunks)
-            if not citations and retrieved_chunks:
-                citations = self._fallback_citations(retrieved_chunks)
 
-            confidence = parsed.confidence if citations else "low"
-            confidence_reasons = parsed.confidence_reasons or []
-            if not confidence_reasons:
-                confidence_reasons = ["The answer was generated from retrieved policy evidence."]
+            # Abstention path: model abstained OR no grounded citations made it through.
+            # Either way, do not decorate with fallback citations and force confidence low.
+            if parsed.abstained or not citations:
+                confidence_inputs = evidence_confidence(citations=[], retrieved_chunks=retrieved_chunks)
+                reasons = parsed.confidence_reasons or [
+                    "Model abstained or returned no citations grounded in the retrieved evidence."
+                ]
+                return AnswerResponse(
+                    question=question,
+                    answer=parsed.answer.strip(),
+                    abstained=True,
+                    confidence="low",
+                    confidence_reasons=reasons,
+                    answer_model=self.answer_model,
+                    embedding_provider=embedding_provider,
+                    top_k=top_k,
+                    citations=[],
+                    retrieved_chunks=retrieved_chunks,
+                    confidence_inputs=confidence_inputs,
+                    token_usage=token_usage,
+                )
+
+            confidence_inputs = evidence_confidence(citations=citations, retrieved_chunks=retrieved_chunks)
+            combined = combine_confidence(parsed.confidence, confidence_inputs.evidence_bucket)
+
+            confidence_reasons = parsed.confidence_reasons or [
+                "The answer was generated from retrieved policy evidence."
+            ]
+            if combined != parsed.confidence:
+                confidence_reasons = [
+                    *confidence_reasons,
+                    f"Downgraded from model self-report ({parsed.confidence}) by evidence signals "
+                    f"(top score {confidence_inputs.top_score:.2f}, "
+                    f"{confidence_inputs.citation_count} citations across "
+                    f"{confidence_inputs.unique_documents} document"
+                    f"{'' if confidence_inputs.unique_documents == 1 else 's'}).",
+                ]
 
             return AnswerResponse(
                 question=question,
                 answer=parsed.answer.strip(),
-                abstained=parsed.abstained,
-                confidence=confidence,
+                abstained=False,
+                confidence=combined,
                 confidence_reasons=confidence_reasons,
                 answer_model=self.answer_model,
                 embedding_provider=embedding_provider,
                 top_k=top_k,
                 citations=citations,
                 retrieved_chunks=retrieved_chunks,
+                confidence_inputs=confidence_inputs,
+                token_usage=token_usage,
             )
         except Exception as exc:  # pragma: no cover
             logger.warning("Falling back to extractive answer mode: %s", exc)
@@ -135,32 +284,45 @@ class AnsweringService:
         embedding_provider: str,
         retrieved_chunks: list[QueryChunkResult],
     ) -> AnswerResponse:
-        citations = self._fallback_citations(retrieved_chunks)
         top_chunk = retrieved_chunks[0]
-        answer = (
-            "I do not have answer generation enabled, so this is an evidence-first fallback. "
-            f"The strongest retrieved policy chunk is from {top_chunk.document_title}"
+        compact = " ".join(top_chunk.text.split())
+        if len(compact) > 480:
+            answer = compact[:480].rstrip() + "..."
+        else:
+            answer = compact
+
+        citation = AnswerCitation(
+            chunk_id=top_chunk.chunk_id,
+            document_id=top_chunk.document_id,
+            document_title=top_chunk.document_title,
+            source_filename=top_chunk.source_filename,
+            section_path=top_chunk.section_path,
+            page_start=top_chunk.page_start,
+            page_end=top_chunk.page_end,
+            score=top_chunk.score,
+            quote_preview=self._quote_preview(top_chunk.text),
+            support="Top retrieved chunk used as the extractive source (no LLM available).",
         )
-        if top_chunk.section_path:
-            answer += f", section {top_chunk.section_path}"
-        answer += f", pages {top_chunk.page_start}-{top_chunk.page_end}. "
-        answer += top_chunk.text[:320].strip()
-        if len(top_chunk.text) > 320:
-            answer += "..."
+        citations = [citation]
+        confidence_inputs = evidence_confidence(citations=citations, retrieved_chunks=retrieved_chunks)
 
         return AnswerResponse(
             question=question,
             answer=answer,
             abstained=False,
-            confidence="medium" if citations else "low",
+            confidence=confidence_inputs.evidence_bucket,
             confidence_reasons=[
-                "This is a fallback extractive summary derived from the top retrieved evidence chunk.",
+                "Extractive top-1 chunk; LLM answer generation is unavailable.",
+                f"Top retrieval score {confidence_inputs.top_score:.2f} with "
+                f"{confidence_inputs.citation_count} citation"
+                f"{'' if confidence_inputs.citation_count == 1 else 's'}.",
             ],
             answer_model="local-extractive",
             embedding_provider=embedding_provider,
             top_k=top_k,
             citations=citations,
             retrieved_chunks=retrieved_chunks,
+            confidence_inputs=confidence_inputs,
         )
 
     def _build_prompt(self, *, question: str, retrieved_chunks: list[QueryChunkResult]) -> str:
@@ -185,7 +347,8 @@ class AnsweringService:
             f"Question:\n{question}\n\n"
             "Retrieved evidence chunks:\n\n"
             + "\n\n---\n\n".join(evidence_blocks)
-            + "\n\nRespond with a concise grounded answer and cite only chunk ids from the evidence above."
+            + "\n\nRespond with a concise grounded answer and cite only chunk ids from the evidence above. "
+            "If you cannot ground the answer in these chunks, set abstained=true and return no citations."
         )
 
     def _citation_records(
@@ -218,23 +381,6 @@ class AnsweringService:
             )
 
         return citations
-
-    def _fallback_citations(self, retrieved_chunks: list[QueryChunkResult]) -> list[AnswerCitation]:
-        return [
-            AnswerCitation(
-                chunk_id=chunk.chunk_id,
-                document_id=chunk.document_id,
-                document_title=chunk.document_title,
-                source_filename=chunk.source_filename,
-                section_path=chunk.section_path,
-                page_start=chunk.page_start,
-                page_end=chunk.page_end,
-                score=chunk.score,
-                quote_preview=self._quote_preview(chunk.text),
-                support="High-similarity retrieved evidence chunk.",
-            )
-            for chunk in retrieved_chunks[:2]
-        ]
 
     def _quote_preview(self, text: str, max_length: int = 320) -> str:
         compact = " ".join(text.split())

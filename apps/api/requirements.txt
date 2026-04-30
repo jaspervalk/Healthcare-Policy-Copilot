@@ -6,6 +6,7 @@ pypdf
 pytest
 python-multipart
 qdrant-client
+rank_bm25
 sqlalchemy
 uvicorn[standard]
 

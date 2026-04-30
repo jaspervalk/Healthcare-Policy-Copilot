@@ -5,6 +5,8 @@
 __pycache__/
 *.pyc
 projects.md
+CLAUDE.md
+BACKEND_AUDIT.md
 raw_pdfs_real/
 .pytest_cache/
 .mypy_cache/

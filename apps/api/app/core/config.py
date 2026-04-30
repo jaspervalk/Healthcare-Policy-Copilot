@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     local_embedding_dimensions: int = 256
     default_query_limit: int = 5
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    max_upload_size_bytes: int = 50 * 1024 * 1024  # 50 MB
+    admin_token: str | None = None  # When set, DELETE/PATCH require Bearer auth.
 
     @property
     def use_sqlite(self) -> bool:
