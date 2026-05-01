@@ -93,7 +93,6 @@ class GroundednessJudge:
                 input=prompt,
                 text_format=JudgeDraft,
                 max_output_tokens=300,
-                temperature=0.0,
                 store=False,
             )
             parsed = response.output_parsed

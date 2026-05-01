@@ -19,6 +19,7 @@ from app.services.documents import (
     list_documents,
     update_document_metadata,
 )
+from app.services.hybrid_index import refresh_hybrid_index
 
 
 router = APIRouter()
@@ -44,6 +45,9 @@ def _mark_document_failed(db: Session, document_id: str, error_message: str) -> 
         document.ingestion_status = "failed"
         document.parse_error = error_message
         db.commit()
+        # Drop any zombie BM25 entries for this doc — rebuild_from_sql filters
+        # on Document.ingestion_status == "indexed".
+        refresh_hybrid_index(db)
 
 
 @router.get("", response_model=list[DocumentRead])

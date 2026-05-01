@@ -47,7 +47,13 @@ class _StubAnsweringService:
 
 
 @pytest.fixture
-def dataset_file(tmp_path):
+def dataset_file(tmp_path, monkeypatch):
+    """Stage a JSONL dataset under a sandboxed DATASETS_DIR.
+
+    The dataset resolver (R4 hardening) rejects absolute paths and `..`
+    segments, so tests must reach the file via a bundled-style name.
+    Monkeypatching DATASETS_DIR lets us keep test fixtures isolated.
+    """
     path = tmp_path / "mini.jsonl"
     path.write_text(
         "\n".join(
@@ -58,7 +64,10 @@ def dataset_file(tmp_path):
         ),
         encoding="utf-8",
     )
-    return path
+    import app.eval.dataset as dataset_module
+
+    monkeypatch.setattr(dataset_module, "DATASETS_DIR", tmp_path)
+    return "mini"
 
 
 def test_run_eval_persists_run_with_aggregate_metrics(dataset_file, tmp_path, monkeypatch):
@@ -113,7 +122,7 @@ def test_run_eval_persists_run_with_aggregate_metrics(dataset_file, tmp_path, mo
     )
 
     # Skip the LLM judge regardless of any ambient OPENAI_API_KEY.
-    options = RunOptions(dataset=str(dataset_file), name="test", top_k=5, judge=False)
+    options = RunOptions(dataset=dataset_file, name="test", top_k=5, judge=False)
 
     with SessionLocal() as db:
         run = run_eval(db, options)

@@ -8,7 +8,7 @@ const base =
   "inline-flex items-center justify-center gap-2 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed";
 
 const variantClasses: Record<Variant, string> = {
-  primary: "bg-ink-800 text-surface hover:bg-ink-900",
+  primary: "bg-primary-500 text-white hover:bg-primary-600",
   secondary: "bg-white text-ink-800 border border-ink-200 hover:bg-ink-50",
   ghost: "text-ink-700 hover:bg-ink-50",
   danger: "bg-accent-500 text-white hover:bg-accent-600",

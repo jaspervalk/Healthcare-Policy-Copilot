@@ -354,8 +354,9 @@ After `npm run dev` from `apps/web`:
 ### What's left for the frontend follow-up
 - F3 (shipped, see below).
 - F4 (shipped, see below).
-- F5: streaming answer rendering, keyboard `⌘K` to focus composer / `j-k` to walk citations.
-- F6: real mobile layouts for the three secondary routes.
+- F5 (shipped, see below).
+- F5b (shipped, see below).
+- F6 (shipped, see below).
 
 ## Phase F3 — Eval run comparison
 
@@ -380,3 +381,58 @@ This finally closes the "no path to fix wrong heuristics from the UI" loop that 
 ### Files
 New: [apps/web/app/evals/compare/page.tsx](apps/web/app/evals/compare/page.tsx), [apps/web/components/evals/eval-compare.tsx](apps/web/components/evals/eval-compare.tsx).
 Modified: [apps/web/lib/api.ts](apps/web/lib/api.ts), [apps/web/components/evals/evals-dashboard.tsx](apps/web/components/evals/evals-dashboard.tsx), [apps/web/components/library/library-console.tsx](apps/web/components/library/library-console.tsx).
+
+## Phase F5 — Stage-level streaming + keyboard focus
+
+### Backend
+- **New endpoint** `POST /api/answer/stream` returning Server-Sent Events. Frame format is the canonical `event: <name>\ndata: <json>\n\n`.
+- Events:
+  - `retrieval` — fired once retrieval succeeds; payload includes `embedding_provider`, `retrieval_mode`, `top_k`, and the full retrieved-chunk list.
+  - `complete` — terminal happy-path event with the full `AnswerResponse` (same shape as the non-streaming endpoint).
+  - `error` — terminal failure event with a `message` string.
+- Retrieval and composition are dispatched via `asyncio.to_thread` so the event loop isn't blocked on Qdrant + OpenAI calls.
+- The `query_logs` row is still persisted at the end of the stream (success or failure) — observability stays consistent across the streaming and non-streaming paths.
+- `AnsweringService` refactored: `retrieve(...)` and `compose(...)` are now public; `answer(...)` keeps its previous signature and just composes the two. The streaming endpoint can step through retrieval → emit event → compose, while the non-streaming endpoint and the eval runner keep using `answer(...)` as before.
+
+### Frontend
+- New `api.streamAnswer(...)` consumer in [apps/web/lib/api.ts](apps/web/lib/api.ts). Uses `fetch()` + `ReadableStream` rather than the native `EventSource` (which only supports GET) and dispatches typed events to `onRetrieval` / `onComplete` / `onError` handlers. `AbortController` cleanup on unmount or page change.
+- `QaWorkspace` rewritten around an explicit four-stage state machine (`idle | retrieving | composing | done | error`). Visible UX:
+  - Click *Ask* → "Retrieving evidence…" skeleton card on the left, evidence skeleton on the right.
+  - `retrieval` event arrives → evidence list populates immediately with retrieval scores; answer card flips to "Generating answer…" with an animated placeholder.
+  - `complete` event arrives → answer card replaces the placeholder; inline citation markers wire up to the same evidence list that's already on screen.
+- ⌘K (Ctrl+K on Linux/Windows) focuses the composer textarea via a global keydown listener. Hint chip in the workspace header makes it discoverable. ⌘+Enter to submit was already there.
+
+### Files
+New: [apps/api/app/api/routes/stream.py](apps/api/app/api/routes/stream.py).
+Modified: [apps/api/app/api/router.py](apps/api/app/api/router.py), [apps/api/app/services/answering.py](apps/api/app/services/answering.py), [apps/web/lib/api.ts](apps/web/lib/api.ts), [apps/web/components/qa/qa-workspace.tsx](apps/web/components/qa/qa-workspace.tsx), [apps/web/components/qa/composer.tsx](apps/web/components/qa/composer.tsx).
+
+## Phase F5b — Token-level streaming
+
+The answer now fills in character-by-character as the model emits it, replacing the placeholder card from F5.
+
+### Backend
+- New `app/services/answer_stream.py` with two pieces:
+  - **`AnswerFieldStreamer`** — a JSON-aware state machine that pulls the top-level `"answer"` field's characters out of streaming structured-output deltas. Handles escape sequences (`\n`, `\t`, `\r`, `\b`, `\f`, `\"`, `\\`, `\/`, `\uXXXX`), whitespace around the colon and opening quote, and chunk boundaries that split the key, an escape, or a unicode point. Stops emitting once the closing quote is consumed.
+  - **`stream_compose(...)`** — async generator that uses the OpenAI Responses streaming API (`AsyncOpenAI.responses.stream(text_format=AnswerDraft)`), feeds each `response.output_text.delta` into the streamer, and yields `answer_delta` events as characters become available. After the model completes, calls `stream.get_final_response()` and yields a terminal `complete` event with the full `AnswerResponse` (citations + confidence + token usage). Falls back to the synchronous `compose(...)` path if the OpenAI call fails or no key is configured — in that case the answer is yielded as a single `answer_delta` followed by `complete`, so the frontend has one rendering path.
+- The streaming endpoint at [/api/answer/stream](apps/api/app/api/routes/stream.py) now consumes `stream_compose(...)` and forwards `answer_delta` events as they arrive. Logging still happens once on `complete` (or once on `error`).
+- 9 new tests for `AnswerFieldStreamer` covering chunk-boundary safety, all JSON escape sequences, unicode escapes split mid-sequence, missing-field tolerance, and post-close termination.
+
+### Frontend
+- `streamAnswer` consumer gains an `onAnswerDelta` handler.
+- `QaWorkspace` keeps a `partialAnswer: string` in its streaming state; each `answer_delta` appends to it. While the answer is composing, a `StreamingAnswer` component renders the live text plus a 1-pixel blinking cursor. On `complete`, the card swaps to the final `AnswerWithCitations` render with inline `[N]` markers (which the streaming text intentionally lacks — the model's citation list isn't ready until the JSON parses fully).
+
+### How to verify
+With `OPENAI_API_KEY` set, ask a question on `/`. Expected sequence: "Retrieving evidence…" skeleton → evidence list populates → live answer text starts streaming with cursor → answer card swaps to inline-citation render once the model finishes. Without an API key, the extractive fallback renders as one delta followed by `complete`, so the surface still works (just no token-by-token reveal).
+
+### Files
+New: [apps/api/app/services/answer_stream.py](apps/api/app/services/answer_stream.py), [apps/api/tests/test_answer_stream.py](apps/api/tests/test_answer_stream.py).
+Modified: [apps/api/app/api/routes/stream.py](apps/api/app/api/routes/stream.py), [apps/web/lib/api.ts](apps/web/lib/api.ts), [apps/web/components/qa/qa-workspace.tsx](apps/web/components/qa/qa-workspace.tsx).
+
+## Phase F6 — Mobile polish
+
+Wide tables on `/library`, `/evals` (per-case detail), and `/evals/compare` (aggregate + per-case) are now wrapped in `overflow-x-auto` containers with `min-w-[N]` floors so the table layout stays readable and horizontally scrollable on narrow viewports instead of mangling. The two-pane (`lg:grid-cols-…`) layouts on `/evals`, `/evals/compare`, and `/queries` already collapse to single column below the `lg` breakpoint via Tailwind defaults; no change needed there. The home page's answer + evidence layout was already mobile-stacked.
+
+Deeper mobile polish (card-based row layouts, abbreviated columns, hamburger nav) is deferred — the wrapped tables are good enough to keep all four routes usable on a phone in portrait, and the portfolio screenshot story is desktop-first anyway.
+
+### Files
+Modified: [apps/web/components/library/library-console.tsx](apps/web/components/library/library-console.tsx), [apps/web/components/evals/evals-dashboard.tsx](apps/web/components/evals/evals-dashboard.tsx), [apps/web/components/evals/eval-compare.tsx](apps/web/components/evals/eval-compare.tsx).

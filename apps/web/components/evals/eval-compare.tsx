@@ -89,7 +89,7 @@ export function EvalCompare() {
             Joined by <span className="font-mono">case_id</span>. Δ = run B − run A; positive numbers favor B.
           </p>
         </div>
-        <Link href="/evals" className="text-sm text-ink-500 hover:text-ink-900">
+        <Link href="/evals" className="text-sm text-ink-500 hover:text-primary-600">
           ← Back to runs
         </Link>
       </header>
@@ -234,7 +234,8 @@ function Comparison({ a, b }: { a: EvalRunDetail; b: EvalRunDetail }) {
             B wins {wins.bWins} · A wins {wins.aWins} · ties {wins.ties}
           </span>
         </header>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-sm">
           <thead className="bg-ink-50/60 text-xs uppercase tracking-wide text-ink-500">
             <tr>
               <th className="px-4 py-2 text-left font-medium">Metric</th>
@@ -254,6 +255,7 @@ function Comparison({ a, b }: { a: EvalRunDetail; b: EvalRunDetail }) {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="overflow-hidden rounded-lg border border-ink-100 bg-white">
@@ -261,7 +263,8 @@ function Comparison({ a, b }: { a: EvalRunDetail; b: EvalRunDetail }) {
           <h2 className="text-sm font-semibold text-ink-800">Per case</h2>
           <span className="text-xs text-ink-500">{cases.length} cases</span>
         </header>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-ink-50/60 text-xs uppercase tracking-wide text-ink-500">
             <tr>
               <th className="px-4 py-2 text-left font-medium">Case</th>
@@ -313,6 +316,7 @@ function Comparison({ a, b }: { a: EvalRunDetail; b: EvalRunDetail }) {
             })}
           </tbody>
         </table>
+        </div>
       </section>
     </div>
   );
@@ -323,7 +327,7 @@ function RunHeader({ detail, label }: { detail: EvalRunDetail; label: "A" | "B" 
   return (
     <div className="rounded-md border border-ink-100 bg-ink-50/40 p-3">
       <div className="flex items-center justify-between">
-        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-sm bg-ink-800 px-1.5 text-xs font-semibold text-surface">
+        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-sm bg-primary-500 px-1.5 text-xs font-semibold text-white">
           {label}
         </span>
         <Badge tone="success">{detail.status}</Badge>

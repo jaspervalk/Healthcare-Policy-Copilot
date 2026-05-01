@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent } from "react";
+import { forwardRef, FormEvent, KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { QueryFilters, RetrievalMode } from "@/lib/types";
@@ -9,18 +9,7 @@ import type { QueryFilters, RetrievalMode } from "@/lib/types";
 type FilterKey = keyof QueryFilters;
 
 
-export function Composer({
-  question,
-  onQuestionChange,
-  filters,
-  onFiltersChange,
-  retrievalMode,
-  onRetrievalModeChange,
-  onSubmit,
-  isSubmitting,
-  disabled,
-  filterOptions,
-}: {
+type ComposerProps = {
   question: string;
   onQuestionChange: (value: string) => void;
   filters: QueryFilters;
@@ -31,7 +20,21 @@ export function Composer({
   isSubmitting: boolean;
   disabled: boolean;
   filterOptions: Record<FilterKey, string[]>;
-}) {
+};
+
+
+export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function Composer({
+  question,
+  onQuestionChange,
+  filters,
+  onFiltersChange,
+  retrievalMode,
+  onRetrievalModeChange,
+  onSubmit,
+  isSubmitting,
+  disabled,
+  filterOptions,
+}, ref) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
@@ -57,6 +60,7 @@ export function Composer({
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-ink-100 bg-white shadow-soft">
       <textarea
+        ref={ref}
         value={question}
         onChange={(event) => onQuestionChange(event.target.value)}
         onKeyDown={handleKeyDown}
@@ -93,7 +97,7 @@ export function Composer({
       </div>
     </form>
   );
-}
+});
 
 
 function FilterChip({
@@ -111,7 +115,7 @@ function FilterChip({
   return (
     <label
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${
-        active ? "border-ink-800 bg-ink-50 text-ink-900" : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
+        active ? "border-primary-200 bg-primary-50 text-primary-600" : "border-ink-200 bg-white text-ink-600 hover:border-ink-300"
       }`}
     >
       <span className="font-medium">{label}</span>
@@ -148,7 +152,7 @@ function ModeToggle({
           onClick={() => onChange(mode)}
           aria-pressed={value === mode}
           className={`rounded-sm px-2 py-0.5 text-xs font-medium transition ${
-            value === mode ? "bg-ink-800 text-surface" : "text-ink-500 hover:text-ink-800"
+            value === mode ? "bg-primary-500 text-white" : "text-ink-500 hover:text-ink-800"
           }`}
         >
           {mode}

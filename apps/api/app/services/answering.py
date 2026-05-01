@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -103,6 +104,29 @@ def evidence_confidence(
     )
 
 
+_INLINE_MARKER_RE = re.compile(
+    r"\[(?:\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+    r"(?:\s*[,;]\s*(?:\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}))*\]"
+)
+
+
+def ensure_inline_citation_markers(answer: str, citation_count: int) -> str:
+    """If the model produced citations but forgot to inline them, append `[1] [2]...`
+    at the end so the frontend chip renderer has something to attach to.
+
+    Recognized inline forms: numeric (`[1]`, `[2, 3]`) and UUID (`[abcd...]`,
+    `[abcd...; efgh...]`). If any of those are already present, we leave the
+    answer untouched.
+    """
+    if not answer or citation_count <= 0:
+        return answer
+    if _INLINE_MARKER_RE.search(answer):
+        return answer
+    appended = " ".join(f"[{i}]" for i in range(1, citation_count + 1))
+    separator = " " if answer.endswith((".", "!", "?", ":")) else ". "
+    return f"{answer.rstrip()}{separator}{appended}"
+
+
 def _extract_token_usage(response: object) -> dict | None:
     """Pull token usage out of an OpenAI Responses API response defensively.
 
@@ -154,6 +178,22 @@ class AnsweringService:
         if settings.openai_api_key and OpenAI is not None:
             self.client = OpenAI(api_key=settings.openai_api_key)
 
+    def retrieve(
+        self,
+        question: str,
+        top_k: int,
+        filters: QueryFilters | None = None,
+        mode: RetrievalMode = "hybrid",
+    ) -> tuple[str, list[QueryChunkResult]]:
+        """Retrieval-only step. Exposed so streaming endpoints can emit retrieval
+        events before composing the answer."""
+        return self.retrieval_service.search(
+            question=question,
+            top_k=top_k,
+            filters=filters,
+            mode=mode,
+        )
+
     def answer(
         self,
         question: str,
@@ -161,13 +201,27 @@ class AnsweringService:
         filters: QueryFilters | None = None,
         mode: RetrievalMode = "hybrid",
     ) -> AnswerResponse:
-        embedding_provider, retrieved_chunks = self.retrieval_service.search(
+        embedding_provider, retrieved_chunks = self.retrieve(question, top_k, filters, mode)
+        return self.compose(
             question=question,
             top_k=top_k,
-            filters=filters,
-            mode=mode,
+            embedding_provider=embedding_provider,
+            retrieved_chunks=retrieved_chunks,
         )
 
+    def compose(
+        self,
+        *,
+        question: str,
+        top_k: int,
+        embedding_provider: str,
+        retrieved_chunks: list[QueryChunkResult],
+    ) -> AnswerResponse:
+        """Compose an AnswerResponse from already-retrieved chunks.
+
+        Same logic as answer() minus retrieval — used by both /api/answer and the
+        streaming endpoint, where retrieval needs to be visible before composition.
+        """
         if not retrieved_chunks:
             return AnswerResponse(
                 question=question,
@@ -196,17 +250,21 @@ class AnsweringService:
             response = self.client.responses.parse(
                 model=self.answer_model,
                 instructions=(
-                    "You are a healthcare policy assistant. Answer only from the supplied evidence. "
-                    "Do not invent policy details. If the evidence is incomplete or ambiguous, abstain "
-                    "by setting abstained=true and returning an empty citations list. "
-                    "Only cite chunk ids that are explicitly provided in the evidence list."
+                    "You are a healthcare policy assistant. Answer only from the supplied evidence.\n"
+                    "Write the answer in concise markdown — use bullet lists for multi-item answers, "
+                    "**bold** for important terms, short paragraphs otherwise. After every clause you "
+                    "draw from a chunk, write a citation marker like [1] or [1, 2]. The numbers are "
+                    "1-indexed positions in the citations array you return.\n"
+                    "If the evidence is too thin to ground an answer, set abstained=true, return no "
+                    "citations, and write one short sentence saying what's missing."
                 ),
                 input=prompt,
                 text_format=AnswerDraft,
-                max_output_tokens=700,
-                temperature=0.1,
+                # gpt-5 family includes reasoning tokens in this budget; 700 was
+                # not enough headroom for both reasoning and a structured answer
+                # with citations, leading to truncated JSON and parse failures.
+                max_output_tokens=2500,
                 store=False,
-                text={"verbosity": "low"},
             )
             parsed = response.output_parsed
             if parsed is None:
@@ -255,7 +313,7 @@ class AnsweringService:
 
             return AnswerResponse(
                 question=question,
-                answer=parsed.answer.strip(),
+                answer=ensure_inline_citation_markers(parsed.answer.strip(), len(citations)),
                 abstained=False,
                 confidence=combined,
                 confidence_reasons=confidence_reasons,

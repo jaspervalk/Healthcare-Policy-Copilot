@@ -124,7 +124,7 @@ function FilterBar({
           onClick={() => onChange(option.key)}
           aria-pressed={value === option.key}
           className={`rounded-sm px-2.5 py-1 text-xs font-medium transition ${
-            value === option.key ? "bg-ink-800 text-surface" : "text-ink-500 hover:text-ink-800"
+            value === option.key ? "bg-primary-500 text-white" : "text-ink-500 hover:text-ink-800"
           }`}
         >
           {option.label}

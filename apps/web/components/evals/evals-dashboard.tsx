@@ -69,7 +69,7 @@ export function EvalsDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/evals/compare" className="text-sm text-ink-500 hover:text-ink-900">
+          <Link href="/evals/compare" className="text-sm text-ink-500 hover:text-primary-600">
             Compare runs →
           </Link>
           <Button variant="secondary" onClick={() => triggerRun("dense")} disabled={running}>
@@ -206,7 +206,8 @@ function RunDetail({ detail, loading }: { detail: EvalRunDetail | null; loading:
       </section>
 
       <section className="overflow-hidden rounded-lg border border-ink-100 bg-white">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-ink-50/60 text-xs uppercase tracking-wide text-ink-500">
             <tr>
               <th className="px-4 py-2 text-left font-medium">Case</th>
@@ -251,6 +252,7 @@ function RunDetail({ detail, loading }: { detail: EvalRunDetail | null; loading:
             ))}
           </tbody>
         </table>
+        </div>
       </section>
     </div>
   );

@@ -121,7 +121,7 @@ export function LibraryConsole() {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search title or filename"
-          className="h-9 w-64 rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-800 placeholder:text-ink-400 focus:border-ink-400 focus:outline-none"
+          className="h-9 w-64 rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-800 placeholder:text-ink-400 focus:border-primary-500 focus:outline-none"
         />
         <select
           value={statusFilter}
@@ -157,30 +157,32 @@ export function LibraryConsole() {
             />
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-ink-50/60 text-xs uppercase tracking-wide text-ink-500">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">Document</th>
-                <th className="px-4 py-2 text-left font-medium">Status</th>
-                <th className="px-4 py-2 text-left font-medium">Type</th>
-                <th className="px-4 py-2 text-right font-medium">Chunks</th>
-                <th className="px-4 py-2 text-right font-medium">Updated</th>
-                <th className="px-4 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ink-100">
-              {filtered.map((document) => (
-                <DocumentRow
-                  key={document.id}
-                  document={document}
-                  busy={busyId === document.id}
-                  onEdit={() => setEditTarget(document)}
-                  onReindex={() => handleReindex(document)}
-                  onDelete={() => setDeleteTarget(document)}
-                />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="bg-ink-50/60 text-xs uppercase tracking-wide text-ink-500">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Document</th>
+                  <th className="px-4 py-2 text-left font-medium">Status</th>
+                  <th className="px-4 py-2 text-left font-medium">Type</th>
+                  <th className="px-4 py-2 text-right font-medium">Chunks</th>
+                  <th className="px-4 py-2 text-right font-medium">Updated</th>
+                  <th className="px-4 py-2 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100">
+                {filtered.map((document) => (
+                  <DocumentRow
+                    key={document.id}
+                    document={document}
+                    busy={busyId === document.id}
+                    onEdit={() => setEditTarget(document)}
+                    onReindex={() => handleReindex(document)}
+                    onDelete={() => setDeleteTarget(document)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -437,7 +439,7 @@ function EditDialog({
 
 
 const inputClass =
-  "h-9 w-full rounded-md border border-ink-200 bg-white px-2.5 text-sm text-ink-800 placeholder:text-ink-400 focus:border-ink-400 focus:outline-none";
+  "h-9 w-full rounded-md border border-ink-200 bg-white px-2.5 text-sm text-ink-800 placeholder:text-ink-400 focus:border-primary-500 focus:outline-none";
 
 
 function FormField({

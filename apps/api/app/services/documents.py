@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import UploadFile
 from sqlalchemy import delete, select
@@ -317,8 +320,6 @@ def index_document(db: Session, document: Document) -> tuple[Document, int, str,
         dimensions=embedding_batch.dimensions,
     )
 
-    write_json(processed_document_path(document.id), _artifact_payload(parsed, chunk_drafts))
-
     document.ingestion_status = "indexed"
     document.parse_error = None
     try:
@@ -332,6 +333,15 @@ def index_document(db: Session, document: Document) -> tuple[Document, int, str,
             pass
         raise
     db.refresh(document)
+
+    # Processed JSON is a debugging artifact only — nothing reads it for
+    # retrieval or answer. Write it after the commit so a disk-write failure
+    # cannot desync SQL and Qdrant.
+    try:
+        write_json(processed_document_path(document.id), _artifact_payload(parsed, chunk_drafts))
+    except Exception as exc:
+        logger.warning("Processed JSON write failed for %s: %s", document.id, exc)
+
     refresh_hybrid_index(db)
     return document, len(chunk_rows), embedding_batch.provider, embedding_batch.dimensions
 

@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Banner } from "@/components/ui/banner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { api } from "@/lib/api";
-import type { AnswerResult, DocumentItem, QueryFilters, RetrievalMode } from "@/lib/types";
+import type {
+  AnswerResult,
+  DocumentItem,
+  QueryFilters,
+  RetrievalMode,
+  RetrievedChunk,
+} from "@/lib/types";
 
+import { AbstainNotice } from "./abstain-notice";
 import { AnswerWithCitations } from "./answer-with-citations";
 import { Composer } from "./composer";
 import { ConfidenceChip } from "./confidence-chip";
@@ -20,15 +27,38 @@ const SAMPLE_QUESTIONS = [
 ];
 
 
+type Stage = "idle" | "retrieving" | "composing" | "done" | "error";
+
+
+type StreamingState = {
+  stage: Stage;
+  retrievedChunks: RetrievedChunk[];
+  embeddingProvider: string | null;
+  partialAnswer: string;
+  result: AnswerResult | null;
+  error: string | null;
+};
+
+
+const initialStreamingState: StreamingState = {
+  stage: "idle",
+  retrievedChunks: [],
+  embeddingProvider: null,
+  partialAnswer: "",
+  result: null,
+  error: null,
+};
+
+
 export function QaWorkspace() {
   const [question, setQuestion] = useState("");
   const [filters, setFilters] = useState<QueryFilters>({});
   const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>("hybrid");
-  const [result, setResult] = useState<AnswerResult | null>(null);
+  const [streamingState, setStreamingState] = useState<StreamingState>(initialStreamingState);
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+
   const indexedCount = useMemo(
     () => documents.filter((document) => document.ingestion_status === "indexed").length,
     [documents],
@@ -45,6 +75,18 @@ export function QaWorkspace() {
     })();
   }, []);
 
+  // ⌘K / Ctrl+K → focus composer.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        composerRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const filterOptions = useMemo(() => {
     const collect = (key: keyof DocumentItem) =>
       Array.from(
@@ -59,36 +101,76 @@ export function QaWorkspace() {
 
   async function handleSubmit() {
     const trimmed = question.trim();
-    if (!trimmed) {
-      return;
-    }
-    setIsSubmitting(true);
-    setError(null);
-    try {
-      const response = await api.answer({
+    if (!trimmed) return;
+
+    setStreamingState({ ...initialStreamingState, stage: "retrieving" });
+    setSelectedChunkId(null);
+
+    await api.streamAnswer(
+      {
         question: trimmed,
         filters,
         retrieval_mode: retrievalMode,
-      });
-      setResult(response);
-      setSelectedChunkId(response.citations[0]?.chunk_id ?? response.retrieved_chunks[0]?.chunk_id ?? null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Answer generation failed.");
-    } finally {
-      setIsSubmitting(false);
-    }
+      },
+      {
+        onRetrieval: (payload) => {
+          setStreamingState((current) => ({
+            ...current,
+            stage: "composing",
+            embeddingProvider: payload.embedding_provider,
+            retrievedChunks: payload.retrieved_chunks,
+            partialAnswer: "",
+          }));
+        },
+        onAnswerDelta: (delta) => {
+          setStreamingState((current) => ({
+            ...current,
+            partialAnswer: current.partialAnswer + delta,
+          }));
+        },
+        onComplete: (result) => {
+          setStreamingState({
+            stage: "done",
+            embeddingProvider: result.embedding_provider,
+            retrievedChunks: result.retrieved_chunks,
+            partialAnswer: result.answer,
+            result,
+            error: null,
+          });
+          setSelectedChunkId(
+            result.citations[0]?.chunk_id ?? result.retrieved_chunks[0]?.chunk_id ?? null,
+          );
+        },
+        onError: (message) => {
+          setStreamingState((current) => ({
+            ...current,
+            stage: "error",
+            error: message,
+          }));
+        },
+      },
+    );
   }
+
+  const isStreaming = streamingState.stage === "retrieving" || streamingState.stage === "composing";
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <header className="mb-6">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink-900">Ask</h1>
-        <p className="mt-1 text-sm text-ink-500">
-          Grounded answers over {indexedCount} indexed document{indexedCount === 1 ? "" : "s"}.
-        </p>
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink-900">Ask</h1>
+          <p className="mt-1 text-sm text-ink-500">
+            Grounded answers over {indexedCount} indexed document{indexedCount === 1 ? "" : "s"}.
+          </p>
+        </div>
+        <kbd className="hidden items-center gap-1 rounded-md border border-ink-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-ink-500 md:inline-flex">
+          <span>⌘</span>K
+          <span className="ml-1 text-ink-400">to focus</span>
+        </kbd>
       </header>
 
       <Composer
+        ref={composerRef}
         question={question}
         onQuestionChange={setQuestion}
         filters={filters}
@@ -96,14 +178,16 @@ export function QaWorkspace() {
         retrievalMode={retrievalMode}
         onRetrievalModeChange={setRetrievalMode}
         onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
+        isSubmitting={isStreaming}
         disabled={!question.trim() || indexedCount === 0}
         filterOptions={filterOptions}
       />
 
-      {error ? <Banner tone="danger" className="mt-4">{error}</Banner> : null}
+      {streamingState.error ? (
+        <Banner tone="danger" className="mt-4">{streamingState.error}</Banner>
+      ) : null}
 
-      {!result && indexedCount === 0 ? (
+      {streamingState.stage === "idle" && indexedCount === 0 ? (
         <div className="mt-12">
           <EmptyState
             title="No indexed documents yet"
@@ -112,7 +196,7 @@ export function QaWorkspace() {
         </div>
       ) : null}
 
-      {!result && indexedCount > 0 ? (
+      {streamingState.stage === "idle" && indexedCount > 0 ? (
         <div className="mt-8">
           <p className="text-xs uppercase tracking-wide text-ink-400">Try a question</p>
           <ul className="mt-2 space-y-1.5">
@@ -131,9 +215,9 @@ export function QaWorkspace() {
         </div>
       ) : null}
 
-      {result ? (
-        <AnswerView
-          result={result}
+      {streamingState.stage !== "idle" && streamingState.stage !== "error" ? (
+        <StreamingView
+          state={streamingState}
           selectedChunkId={selectedChunkId}
           onSelect={setSelectedChunkId}
         />
@@ -143,49 +227,136 @@ export function QaWorkspace() {
 }
 
 
-function AnswerView({
-  result,
+function StreamingView({
+  state,
   selectedChunkId,
   onSelect,
 }: {
-  result: AnswerResult;
+  state: StreamingState;
   selectedChunkId: string | null;
   onSelect: (chunkId: string | null) => void;
 }) {
+  const { stage, result, retrievedChunks } = state;
+  const showAnswerCard = stage === "composing" || (stage === "done" && result !== null);
+
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-4">
-        <div className="rounded-lg border border-ink-100 bg-white p-5 shadow-soft">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <ConfidenceChip
-              confidence={result.confidence}
-              reasons={result.confidence_reasons}
-              inputs={result.confidence_inputs}
-            />
-            {result.abstained ? (
-              <span className="inline-flex h-7 items-center rounded-md border border-amber-200 bg-amber-50 px-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                abstained
-              </span>
+        {showAnswerCard ? (
+          <div className="rounded-lg border border-ink-100 bg-white p-5 shadow-soft">
+            {stage === "composing" ? (
+              <StreamingAnswer partialAnswer={state.partialAnswer} />
+            ) : result ? (
+              <>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <ConfidenceChip
+                    confidence={result.confidence}
+                    reasons={result.confidence_reasons}
+                    inputs={result.confidence_inputs}
+                  />
+                </div>
+                {result.abstained ? (
+                  <AbstainNotice result={result} />
+                ) : (
+                  <AnswerWithCitations
+                    answer={result.answer}
+                    citations={result.citations}
+                    selectedChunkId={selectedChunkId}
+                    onCitationClick={onSelect}
+                  />
+                )}
+                <AnswerMeta result={result} />
+              </>
             ) : null}
           </div>
-          <AnswerWithCitations
-            answer={result.answer}
-            citations={result.citations}
-            selectedChunkId={selectedChunkId}
-            onCitationClick={onSelect}
-          />
-          <AnswerMeta result={result} />
-        </div>
+        ) : (
+          <RetrievalSkeleton />
+        )}
       </div>
+
       <aside className="lg:sticky lg:top-20 lg:self-start">
-        <EvidencePanel
-          citations={result.citations}
-          retrievedChunks={result.retrieved_chunks}
-          selectedChunkId={selectedChunkId}
-          onSelect={onSelect}
-        />
+        {retrievedChunks.length > 0 ? (
+          <EvidencePanel
+            citations={result?.citations ?? []}
+            retrievedChunks={retrievedChunks}
+            selectedChunkId={selectedChunkId}
+            onSelect={onSelect}
+          />
+        ) : (
+          <EvidenceSkeleton />
+        )}
       </aside>
     </div>
+  );
+}
+
+
+function RetrievalSkeleton() {
+  return (
+    <div className="rounded-lg border border-ink-100 bg-white p-5 shadow-soft">
+      <p className="flex items-center gap-2 text-sm text-ink-500">
+        <Spinner /> Retrieving evidence…
+      </p>
+    </div>
+  );
+}
+
+
+function StreamingAnswer({ partialAnswer }: { partialAnswer: string }) {
+  if (!partialAnswer) {
+    return (
+      <div className="space-y-3">
+        <p className="flex items-center gap-2 text-sm text-ink-500">
+          <Spinner /> Generating answer…
+        </p>
+        <div className="space-y-2">
+          <div className="h-3 animate-pulse rounded bg-ink-100" />
+          <div className="h-3 w-11/12 animate-pulse rounded bg-ink-100" />
+          <div className="h-3 w-9/12 animate-pulse rounded bg-ink-100" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="flex items-center gap-2 text-xs text-ink-400">
+        <Spinner /> Streaming…
+      </p>
+      <p className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-ink-800">
+        {partialAnswer}
+        <span
+          aria-hidden
+          className="ml-0.5 inline-block h-4 w-[1px] -translate-y-[1px] animate-pulse bg-ink-500 align-middle"
+        />
+      </p>
+    </div>
+  );
+}
+
+
+function EvidenceSkeleton() {
+  return (
+    <div className="rounded-lg border border-ink-100 bg-white">
+      <div className="border-b border-ink-100 px-4 py-2.5">
+        <span className="text-sm font-semibold text-ink-800">Evidence</span>
+      </div>
+      <div className="space-y-2 p-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="h-12 animate-pulse rounded bg-ink-50" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+function Spinner() {
+  return (
+    <svg className="h-3.5 w-3.5 animate-spin text-ink-400" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+      <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
   );
 }
 

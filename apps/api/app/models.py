@@ -20,7 +20,7 @@ class Document(Base):
     title: Mapped[str] = mapped_column(String(255), default="Untitled Policy")
     source_filename: Mapped[str] = mapped_column(String(255))
     stored_path: Mapped[str] = mapped_column(String(512))
-    checksum: Mapped[str] = mapped_column(String(64), index=True)
+    checksum: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     ingestion_status: Mapped[str] = mapped_column(String(32), default="uploaded")
     document_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     department: Mapped[str | None] = mapped_column(String(128), nullable=True)
