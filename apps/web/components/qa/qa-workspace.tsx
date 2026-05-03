@@ -21,9 +21,9 @@ import { EvidencePanel } from "./evidence-panel";
 
 
 const SAMPLE_QUESTIONS = [
-  "What is the urgent prior authorization escalation process?",
-  "How many days does a Medicare benefit period cover for inpatient hospital services?",
-  "Which services are excluded from inpatient psychiatric hospital coverage?",
+  "Wanneer worden de salarissen volgens de CAO GGZ verhoogd en met welk percentage?",
+  "Hoeveel vakantie-uren heeft een fulltime medewerker per jaar volgens de CAO GGZ?",
+  "Wat is de vergoeding voor consignatiediensten en bereikbaarheidsdiensten?",
 ];
 
 
@@ -99,8 +99,8 @@ export function QaWorkspace() {
     };
   }, [documents]);
 
-  async function handleSubmit() {
-    const trimmed = question.trim();
+  async function runQuestion(text: string, source: "manual" | "suggestion" = "manual") {
+    const trimmed = text.trim();
     if (!trimmed) return;
 
     setStreamingState({ ...initialStreamingState, stage: "retrieving" });
@@ -111,6 +111,7 @@ export function QaWorkspace() {
         question: trimmed,
         filters,
         retrieval_mode: retrievalMode,
+        source,
       },
       {
         onRetrieval: (payload) => {
@@ -150,6 +151,15 @@ export function QaWorkspace() {
         },
       },
     );
+  }
+
+  async function handleSubmit() {
+    await runQuestion(question);
+  }
+
+  function handleSuggestionClick(text: string) {
+    setQuestion(text);
+    void runQuestion(text, "suggestion");
   }
 
   const isStreaming = streamingState.stage === "retrieving" || streamingState.stage === "composing";
@@ -220,6 +230,7 @@ export function QaWorkspace() {
           state={streamingState}
           selectedChunkId={selectedChunkId}
           onSelect={setSelectedChunkId}
+          onSuggestionClick={handleSuggestionClick}
         />
       ) : null}
     </div>
@@ -231,10 +242,12 @@ function StreamingView({
   state,
   selectedChunkId,
   onSelect,
+  onSuggestionClick,
 }: {
   state: StreamingState;
   selectedChunkId: string | null;
   onSelect: (chunkId: string | null) => void;
+  onSuggestionClick: (text: string) => void;
 }) {
   const { stage, result, retrievedChunks } = state;
   const showAnswerCard = stage === "composing" || (stage === "done" && result !== null);
@@ -265,6 +278,12 @@ function StreamingView({
                     onCitationClick={onSelect}
                   />
                 )}
+                {result.suggested_questions && result.suggested_questions.length > 0 ? (
+                  <SuggestedQuestions
+                    questions={result.suggested_questions}
+                    onClick={onSuggestionClick}
+                  />
+                ) : null}
                 <AnswerMeta result={result} />
               </>
             ) : null}
@@ -357,6 +376,36 @@ function Spinner() {
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
       <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+
+function SuggestedQuestions({
+  questions,
+  onClick,
+}: {
+  questions: string[];
+  onClick: (text: string) => void;
+}) {
+  return (
+    <div className="mt-5 border-t border-ink-100 pt-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-400">
+        Try a follow-up
+      </p>
+      <ul className="mt-2 flex flex-wrap gap-2">
+        {questions.map((text) => (
+          <li key={text}>
+            <button
+              type="button"
+              onClick={() => onClick(text)}
+              className="rounded-full border border-ink-200 bg-white px-3 py-1 text-xs text-ink-700 transition hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700"
+            >
+              {text}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

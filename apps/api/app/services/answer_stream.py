@@ -26,6 +26,7 @@ from app.services.answering import (
     combine_confidence,
     ensure_inline_citation_markers,
     evidence_confidence,
+    sanitize_suggested_questions,
 )
 
 try:
@@ -204,7 +205,11 @@ async def stream_compose(
         "phrase copied exactly from that chunk's text — no paraphrasing, no quotation marks "
         "around it, no ellipsis. Aim for one sentence or clause, under 30 words.\n"
         "If the evidence is too thin to ground an answer, set abstained=true, return no "
-        "citations, and write one short sentence saying what's missing."
+        "citations, and write one short sentence saying what's missing.\n"
+        "Also produce up to 3 `suggested_questions` — short, self-contained follow-up "
+        "questions a healthcare admin might ask next, anchored in the same retrieved "
+        "evidence. Match the language of the user's question (Dutch question → Dutch "
+        "suggestions). Do not repeat the user's question."
     )
 
     try:
@@ -270,6 +275,7 @@ async def stream_compose(
             retrieved_chunks=retrieved_chunks,
             confidence_inputs=confidence_inputs,
             token_usage=token_usage,
+            suggested_questions=sanitize_suggested_questions(parsed.suggested_questions),
         )
     else:
         confidence_inputs = evidence_confidence(citations=citations, retrieved_chunks=retrieved_chunks)
@@ -301,6 +307,7 @@ async def stream_compose(
             retrieved_chunks=retrieved_chunks,
             confidence_inputs=confidence_inputs,
             token_usage=token_usage,
+            suggested_questions=sanitize_suggested_questions(parsed.suggested_questions),
         )
 
     yield StreamEvent("complete", response.model_dump())

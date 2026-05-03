@@ -84,6 +84,7 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
     filters: QueryFilters | None = None
     retrieval_mode: Literal["dense", "hybrid"] = "hybrid"
+    source: Literal["manual", "suggestion"] = "manual"
 
 
 class QueryChunkResult(BaseModel):
@@ -199,6 +200,7 @@ class AnswerResponse(BaseModel):
     retrieved_chunks: list[QueryChunkResult]
     confidence_inputs: ConfidenceInputs | None = None
     token_usage: dict | None = None
+    suggested_questions: list[str] = Field(default_factory=list)
 
 
 class QueryLogRead(BaseModel):
@@ -207,6 +209,7 @@ class QueryLogRead(BaseModel):
     id: str
     request_id: str | None
     endpoint: str
+    source: str | None
     question: str
     filters: dict
     top_k: int

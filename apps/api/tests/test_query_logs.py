@@ -64,6 +64,44 @@ def _citation(chunk_id: str, source_filename: str) -> AnswerCitation:
     )
 
 
+def test_source_defaults_to_manual_when_omitted(session_factory):
+    response = QueryResponse(
+        question="hi", embedding_provider="local-hash", top_k=5, results=[_chunk("c1", "a.pdf")]
+    )
+    log_id = log_query(
+        request_id=None, question="hi", filters=None, top_k=5, response=response, latency_ms=1
+    )
+    with session_factory() as db:
+        assert get_query_log(db, log_id).source == "manual"
+
+
+def test_log_answer_persists_suggestion_source(session_factory):
+    response = AnswerResponse(
+        question="follow up",
+        answer="...",
+        abstained=False,
+        confidence="medium",
+        confidence_reasons=[],
+        answer_model="gpt-4.1-mini",
+        embedding_provider="openai",
+        top_k=5,
+        citations=[_citation("c1", "a.pdf")],
+        retrieved_chunks=[_chunk("c1", "a.pdf")],
+        confidence_inputs=None,
+    )
+    log_id = log_answer(
+        request_id=None,
+        question="follow up",
+        filters=None,
+        top_k=5,
+        response=response,
+        latency_ms=10,
+        source="suggestion",
+    )
+    with session_factory() as db:
+        assert get_query_log(db, log_id).source == "suggestion"
+
+
 def test_log_query_persists_retrieval_only_fields(session_factory):
     response = QueryResponse(
         question="hello",

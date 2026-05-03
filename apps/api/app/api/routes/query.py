@@ -44,6 +44,7 @@ def query_documents(request: QueryRequest, http_request: Request) -> QueryRespon
             top_k=request.top_k,
             error=str(exc),
             latency_ms=latency_ms,
+            source=request.source,
         )
         raise map_exception(exc) from exc
 
@@ -55,6 +56,7 @@ def query_documents(request: QueryRequest, http_request: Request) -> QueryRespon
         top_k=request.top_k,
         response=response,
         latency_ms=latency_ms,
+        source=request.source,
     )
     return response
 
@@ -81,6 +83,7 @@ def answer_question(request: AnswerRequest, http_request: Request) -> AnswerResp
             top_k=request.top_k,
             error=str(exc),
             latency_ms=latency_ms,
+            source=request.source,
         )
         raise map_exception(exc) from exc
 
@@ -92,5 +95,6 @@ def answer_question(request: AnswerRequest, http_request: Request) -> AnswerResp
         top_k=request.top_k,
         response=response,
         latency_ms=latency_ms,
+        source=request.source,
     )
     return response

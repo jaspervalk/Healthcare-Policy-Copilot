@@ -58,6 +58,14 @@ class AnswerDraft(BaseModel):
     citations: list[AnswerCitationDraft] = Field(
         description="Evidence chunks used to support the answer. Use only provided chunk ids."
     )
+    suggested_questions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Up to 3 short, useful follow-up questions a healthcare admin might ask next, "
+            "grounded in the same retrieved evidence. Match the language of the user's question. "
+            "Each must be self-contained (no pronouns referring to prior turns)."
+        ),
+    )
 
 
 def evidence_confidence(
@@ -116,6 +124,28 @@ _INLINE_MARKER_RE = re.compile(
     r"\[(?:\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
     r"(?:\s*[,;]\s*(?:\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}))*\]"
 )
+
+
+def sanitize_suggested_questions(raw: list[str] | None, *, limit: int = 3) -> list[str]:
+    """Trim, dedupe, and cap follow-up suggestions before they leave the API."""
+    if not raw:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        text = item.strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def ensure_inline_citation_markers(answer: str, citation_count: int) -> str:
@@ -267,7 +297,11 @@ class AnsweringService:
                     "phrase copied exactly from that chunk's text — no paraphrasing, no quotation marks "
                     "around it, no ellipsis. Aim for one sentence or clause, under 30 words.\n"
                     "If the evidence is too thin to ground an answer, set abstained=true, return no "
-                    "citations, and write one short sentence saying what's missing."
+                    "citations, and write one short sentence saying what's missing.\n"
+                    "Also produce up to 3 `suggested_questions` — short, self-contained follow-up "
+                    "questions a healthcare admin might ask next, anchored in the same retrieved "
+                    "evidence. Match the language of the user's question (Dutch question → Dutch "
+                    "suggestions). Do not repeat the user's question."
                 ),
                 input=prompt,
                 text_format=AnswerDraft,
@@ -304,6 +338,7 @@ class AnsweringService:
                     retrieved_chunks=retrieved_chunks,
                     confidence_inputs=confidence_inputs,
                     token_usage=token_usage,
+                    suggested_questions=sanitize_suggested_questions(parsed.suggested_questions),
                 )
 
             confidence_inputs = evidence_confidence(citations=citations, retrieved_chunks=retrieved_chunks)
@@ -335,6 +370,7 @@ class AnsweringService:
                 retrieved_chunks=retrieved_chunks,
                 confidence_inputs=confidence_inputs,
                 token_usage=token_usage,
+                suggested_questions=sanitize_suggested_questions(parsed.suggested_questions),
             )
         except Exception as exc:  # pragma: no cover
             logger.warning("Falling back to extractive answer mode: %s", exc)

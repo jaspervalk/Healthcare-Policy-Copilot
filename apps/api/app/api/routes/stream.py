@@ -88,6 +88,7 @@ async def answer_stream(request: AnswerRequest, http_request: Request) -> Stream
                     top_k=request.top_k,
                     response=final_response,
                     latency_ms=latency_ms,
+                    source=request.source,
                 )
 
         except Exception as exc:  # noqa: BLE001 — terminal SSE error frame
@@ -101,6 +102,7 @@ async def answer_stream(request: AnswerRequest, http_request: Request) -> Stream
                 top_k=request.top_k,
                 error=str(exc),
                 latency_ms=latency_ms,
+                source=request.source,
             )
             yield _format_event("error", {"message": str(exc)})
 

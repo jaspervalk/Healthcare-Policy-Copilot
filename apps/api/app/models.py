@@ -106,6 +106,9 @@ class QueryLog(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     request_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     endpoint: Mapped[str] = mapped_column(String(16), index=True)
+    # "manual" = typed in composer, "suggestion" = clicked a follow-up chip.
+    # Nullable so pre-existing rows from before this column existed read as NULL.
+    source: Mapped[str | None] = mapped_column(String(16), index=True, nullable=True)
     question: Mapped[str] = mapped_column(Text)
     filters: Mapped[dict] = mapped_column(JSON, default=dict)
     top_k: Mapped[int] = mapped_column(Integer)

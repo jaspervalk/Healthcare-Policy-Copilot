@@ -84,6 +84,7 @@ export type AnswerResult = {
   retrieved_chunks: RetrievedChunk[];
   confidence_inputs: ConfidenceInputs | null;
   token_usage: Record<string, number> | null;
+  suggested_questions: string[];
 };
 
 export type RetrievalMode = "dense" | "hybrid";
@@ -94,10 +95,13 @@ export type QueryFilters = {
   policy_status?: string;
 };
 
+export type QuestionSource = "manual" | "suggestion";
+
 export type QueryLog = {
   id: string;
   request_id: string | null;
   endpoint: "query" | "answer";
+  source: QuestionSource | null;
   question: string;
   filters: Record<string, string>;
   top_k: number;

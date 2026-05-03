@@ -38,6 +38,7 @@ async function streamAnswer(
     top_k?: number;
     filters?: QueryFilters;
     retrieval_mode?: RetrievalMode;
+    source?: "manual" | "suggestion";
   },
   handlers: StreamHandlers,
 ): Promise<void> {
@@ -61,6 +62,7 @@ async function streamAnswer(
         top_k: params.top_k ?? 5,
         filters: params.filters,
         retrieval_mode: params.retrieval_mode ?? "hybrid",
+        source: params.source ?? "manual",
       }),
       signal: controller.signal,
     });

@@ -64,7 +64,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
         value={question}
         onChange={(event) => onQuestionChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Ask a grounded question — e.g. What is the urgent prior authorization escalation process?"
+        placeholder="Stel een vraag — bijv. Met welk percentage worden de salarissen volgens de CAO GGZ verhoogd?"
         rows={3}
         className="block w-full resize-none border-0 bg-transparent px-4 pt-4 pb-2 text-[15px] leading-6 text-ink-800 placeholder:text-ink-400 focus:outline-none focus:ring-0"
       />

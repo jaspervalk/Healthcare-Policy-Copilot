@@ -35,10 +35,12 @@ def log_query(
     top_k: int,
     response: QueryResponse,
     latency_ms: int,
+    source: str = "manual",
 ) -> str | None:
     row = QueryLog(
         request_id=request_id,
         endpoint="query",
+        source=source,
         question=question,
         filters=_filters_dict(filters),
         top_k=top_k,
@@ -67,10 +69,12 @@ def log_answer(
     top_k: int,
     response: AnswerResponse,
     latency_ms: int,
+    source: str = "manual",
 ) -> str | None:
     row = QueryLog(
         request_id=request_id,
         endpoint="answer",
+        source=source,
         question=question,
         filters=_filters_dict(filters),
         top_k=top_k,
@@ -103,10 +107,12 @@ def log_failure(
     top_k: int,
     error: str,
     latency_ms: int,
+    source: str = "manual",
 ) -> str | None:
     row = QueryLog(
         request_id=request_id,
         endpoint=endpoint,
+        source=source,
         question=question,
         filters=_filters_dict(filters),
         top_k=top_k,
