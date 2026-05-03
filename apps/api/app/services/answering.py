@@ -34,7 +34,15 @@ class AnswerCitationDraft(BaseModel):
     chunk_id: str = Field(description="Exact chunk_id of a retrieved evidence chunk that supports the answer.")
     support: str | None = Field(
         default=None,
-        description="Short note explaining what this chunk supports.",
+        description="Short note (paraphrased) explaining what this chunk supports.",
+    )
+    quote: str | None = Field(
+        default=None,
+        description=(
+            "The single most relevant verbatim phrase from the chunk's text that grounds the cited claim. "
+            "Copy the words exactly as they appear in the chunk (no paraphrasing, no ellipsis, no quotes around it). "
+            "Aim for one sentence or one clause; keep it under ~30 words."
+        ),
     )
 
 
@@ -255,6 +263,9 @@ class AnsweringService:
                     "**bold** for important terms, short paragraphs otherwise. After every clause you "
                     "draw from a chunk, write a citation marker like [1] or [1, 2]. The numbers are "
                     "1-indexed positions in the citations array you return.\n"
+                    "For each citation, include a `quote` field with the single most relevant VERBATIM "
+                    "phrase copied exactly from that chunk's text — no paraphrasing, no quotation marks "
+                    "around it, no ellipsis. Aim for one sentence or clause, under 30 words.\n"
                     "If the evidence is too thin to ground an answer, set abstained=true, return no "
                     "citations, and write one short sentence saying what's missing."
                 ),
@@ -423,6 +434,7 @@ class AnsweringService:
             if chunk is None or chunk.chunk_id in seen:
                 continue
             seen.add(chunk.chunk_id)
+            quote = (draft.quote or "").strip() or None
             citations.append(
                 AnswerCitation(
                     chunk_id=chunk.chunk_id,
@@ -435,6 +447,7 @@ class AnsweringService:
                     score=chunk.score,
                     quote_preview=self._quote_preview(chunk.text),
                     support=draft.support,
+                    quote=quote,
                 )
             )
 

@@ -200,6 +200,9 @@ async def stream_compose(
         "**bold** for important terms, short paragraphs otherwise. After every clause you "
         "draw from a chunk, write a citation marker like [1] or [1, 2]. The numbers are "
         "1-indexed positions in the citations array you return.\n"
+        "For each citation, include a `quote` field with the single most relevant VERBATIM "
+        "phrase copied exactly from that chunk's text — no paraphrasing, no quotation marks "
+        "around it, no ellipsis. Aim for one sentence or clause, under 30 words.\n"
         "If the evidence is too thin to ground an answer, set abstained=true, return no "
         "citations, and write one short sentence saying what's missing."
     )

@@ -59,6 +59,7 @@ export type AnswerCitation = {
   score: number;
   quote_preview: string;
   support: string | null;
+  quote: string | null;
 };
 
 export type ConfidenceInputs = {

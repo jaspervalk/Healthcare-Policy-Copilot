@@ -58,9 +58,15 @@ export function CitationChip({
           <span className="block text-xs text-ink-500">
             {citation.section_path ?? "general section"} · pages {citation.page_start}-{citation.page_end}
           </span>
-          <span className="mt-2 block text-xs leading-5 text-ink-700">
-            {citation.quote_preview}
-          </span>
+          {citation.quote ? (
+            <span className="mt-2 block border-l-2 border-primary-400 bg-primary-50/50 px-2 py-1 text-xs leading-5 italic text-ink-800">
+              “{citation.quote}”
+            </span>
+          ) : (
+            <span className="mt-2 block text-xs leading-5 text-ink-700">
+              {citation.quote_preview}
+            </span>
+          )}
         </span>
       ) : null}
     </span>

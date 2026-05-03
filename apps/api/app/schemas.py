@@ -122,6 +122,7 @@ class AnswerCitation(BaseModel):
     score: float
     quote_preview: str
     support: str | None = None
+    quote: str | None = None
 
 
 class ConfidenceInputs(BaseModel):

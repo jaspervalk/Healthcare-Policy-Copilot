@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef, type ReactNode } from "react";
 
 import type { AnswerCitation, RetrievedChunk } from "@/lib/types";
 
@@ -143,13 +143,70 @@ const EvidenceRow = forwardRef<HTMLDivElement, EvidenceRowProps>(function Eviden
 
       {isSelected ? (
         <div className="mt-3 space-y-3 text-sm">
-          {citation?.support ? (
-            <p className="rounded-md border border-ink-100 bg-ink-50 px-3 py-2 text-ink-600">{citation.support}</p>
+          {citation?.quote ? (
+            <blockquote className="border-l-2 border-primary-400 bg-primary-50/40 px-3 py-2 italic text-ink-800">
+              “{citation.quote}”
+            </blockquote>
           ) : null}
-          <p className="whitespace-pre-wrap leading-6 text-ink-700">{chunk.text}</p>
+          {citation?.support ? (
+            <p className="text-xs text-ink-500">{citation.support}</p>
+          ) : null}
+          <p className="whitespace-pre-wrap leading-6 text-ink-700">
+            {renderHighlighted(chunk.text, citation?.quote ?? null)}
+          </p>
           <p className="text-xs text-ink-400">{chunk.source_filename}</p>
         </div>
       ) : null}
     </div>
   );
 });
+
+
+/**
+ * Highlight `quote` inside `text` with a `<mark>`. Best-effort: tries an exact
+ * case-insensitive match first, then falls back to a whitespace-collapsed
+ * match (handles minor formatting differences like double spaces or newlines).
+ * If no match is found, the chunk renders without highlighting.
+ */
+function renderHighlighted(text: string, quote: string | null): ReactNode {
+  if (!quote) return text;
+  const trimmed = quote.trim().replace(/^[“"']+|[”"']+$/g, "").trim();
+  if (!trimmed) return text;
+
+  // 1. Exact (case-insensitive) match.
+  const lowerText = text.toLowerCase();
+  const lowerQuote = trimmed.toLowerCase();
+  const exactIdx = lowerText.indexOf(lowerQuote);
+  if (exactIdx >= 0) {
+    return (
+      <>
+        {text.slice(0, exactIdx)}
+        <mark className="rounded-sm bg-primary-100 px-0.5 text-ink-900">
+          {text.slice(exactIdx, exactIdx + trimmed.length)}
+        </mark>
+        {text.slice(exactIdx + trimmed.length)}
+      </>
+    );
+  }
+
+  // 2. Whitespace-collapsed match — handles cases where the model normalized
+  // multiple spaces / newlines while quoting. We compute a regex that allows
+  // any run of whitespace between non-whitespace tokens.
+  const tokens = trimmed.split(/\s+/).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (tokens.length === 0) return text;
+  const pattern = new RegExp(tokens.join("\\s+"), "i");
+  const match = pattern.exec(text);
+  if (match) {
+    const start = match.index;
+    const end = start + match[0].length;
+    return (
+      <>
+        {text.slice(0, start)}
+        <mark className="rounded-sm bg-primary-100 px-0.5 text-ink-900">{text.slice(start, end)}</mark>
+        {text.slice(end)}
+      </>
+    );
+  }
+
+  return text;
+}

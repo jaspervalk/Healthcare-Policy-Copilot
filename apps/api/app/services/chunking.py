@@ -83,8 +83,18 @@ def chunk_pages(pages: list[ParsedPage], target_words: int = TARGET_WORDS, overl
         if not group:
             return next_index
 
-        body_text = "\n\n".join(block.text for block in group)
-        words = body_text.split()
+        # Build the word list AND a parallel list of page numbers, one per word.
+        # The window's page span is then derived from the pages of the words
+        # actually in [start:stop] — not from every block in the group, which
+        # would over-report (e.g. "pages 2-73" on a 100-chunk document with
+        # weak heading detection).
+        words: list[str] = []
+        word_pages: list[int] = []
+        for block in group:
+            block_words = block.text.split()
+            words.extend(block_words)
+            word_pages.extend([block.page_number] * len(block_words))
+
         if not words:
             return next_index
 
@@ -97,19 +107,21 @@ def chunk_pages(pages: list[ParsedPage], target_words: int = TARGET_WORDS, overl
             else:
                 chunk_text = snippet
 
-            page_numbers = [block.page_number for block in group]
+            window_pages = word_pages[start:stop]
+            page_start = min(window_pages)
+            page_end = max(window_pages)
             chunks.append(
                 ChunkDraft(
                     chunk_index=next_index,
                     section_path=heading,
-                    page_start=min(page_numbers),
-                    page_end=max(page_numbers),
+                    page_start=page_start,
+                    page_end=page_end,
                     token_count=_word_count(chunk_text),
                     text=chunk_text,
                     normalized_text=normalize_text(chunk_text.lower()),
                     chunk_metadata={
                         "heading": heading,
-                        "page_span": [min(page_numbers), max(page_numbers)],
+                        "page_span": [page_start, page_end],
                     },
                 )
             )
