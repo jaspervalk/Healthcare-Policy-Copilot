@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, FormEvent, KeyboardEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { QueryFilters, RetrievalMode } from "@/lib/types";
@@ -23,7 +23,7 @@ type ComposerProps = {
 };
 
 
-export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function Composer({
+export function Composer({
   question,
   onQuestionChange,
   filters,
@@ -34,7 +34,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
   isSubmitting,
   disabled,
   filterOptions,
-}, ref) {
+}: ComposerProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmit();
@@ -60,7 +60,6 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
   return (
     <form onSubmit={handleSubmit} className="rounded-lg border border-ink-100 bg-white shadow-soft">
       <textarea
-        ref={ref}
         value={question}
         onChange={(event) => onQuestionChange(event.target.value)}
         onKeyDown={handleKeyDown}
@@ -97,7 +96,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
       </div>
     </form>
   );
-});
+}
 
 
 function FilterChip({

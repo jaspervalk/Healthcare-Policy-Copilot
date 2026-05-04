@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Banner } from "@/components/ui/banner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -57,7 +57,6 @@ export function QaWorkspace() {
   const [streamingState, setStreamingState] = useState<StreamingState>(initialStreamingState);
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const indexedCount = useMemo(
     () => documents.filter((document) => document.ingestion_status === "indexed").length,
@@ -73,18 +72,6 @@ export function QaWorkspace() {
         // Library state is best-effort; we don't surface this as a blocking error.
       }
     })();
-  }, []);
-
-  // ⌘K / Ctrl+K → focus composer.
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        composerRef.current?.focus();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const filterOptions = useMemo(() => {
@@ -166,21 +153,14 @@ export function QaWorkspace() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink-900">Ask</h1>
-          <p className="mt-1 text-sm text-ink-500">
-            Grounded answers over {indexedCount} indexed document{indexedCount === 1 ? "" : "s"}.
-          </p>
-        </div>
-        <kbd className="hidden items-center gap-1 rounded-md border border-ink-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-ink-500 md:inline-flex">
-          <span>⌘</span>K
-          <span className="ml-1 text-ink-400">to focus</span>
-        </kbd>
+      <header className="mb-6">
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink-900">Ask</h1>
+        <p className="mt-1 text-sm text-ink-500">
+          Grounded answers over {indexedCount} indexed document{indexedCount === 1 ? "" : "s"}.
+        </p>
       </header>
 
       <Composer
-        ref={composerRef}
         question={question}
         onQuestionChange={setQuestion}
         filters={filters}
