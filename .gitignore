@@ -4,14 +4,10 @@
 .venv/
 __pycache__/
 *.pyc
-projects.md
 CLAUDE.md
-BACKEND_AUDIT.md
-CHANGELOG_BACKEND.md
-PROJECT.md
-DEMO.md
-DEMO_QUESTIONS.md
-RESUME.md
+# Internal/working notes live in docs/. Only specific docs are tracked.
+docs/*
+!docs/healthcare-policy-copilot-plan.md
 raw_pdfs_real/
 .pytest_cache/
 .mypy_cache/
