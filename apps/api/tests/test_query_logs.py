@@ -143,7 +143,7 @@ def test_log_answer_persists_full_answer_fields(session_factory):
         abstained=False,
         confidence="medium",
         confidence_reasons=["evidence supports"],
-        answer_model="gpt-5.4-mini",
+        answer_model="gpt-4.1-mini",
         embedding_provider="openai",
         top_k=5,
         citations=[_citation("c1", "a.pdf")],
@@ -173,7 +173,7 @@ def test_log_answer_persists_full_answer_fields(session_factory):
         assert row.endpoint == "answer"
         assert row.status == "ok"
         assert row.confidence == "medium"
-        assert row.answer_model == "gpt-5.4-mini"
+        assert row.answer_model == "gpt-4.1-mini"
         assert row.abstained is False
         assert row.token_usage == {"input_tokens": 1200, "output_tokens": 80, "total_tokens": 1280}
         assert row.confidence_inputs["evidence_bucket"] == "medium"

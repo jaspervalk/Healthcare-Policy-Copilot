@@ -110,16 +110,16 @@ This is the stack I recommend for the project.
 
 These choices are based on current OpenAI docs and pricing pages reviewed on 2026-04-17.
 
-- Default answer model: `gpt-5.4-mini`
-- Higher-precision answer/eval model: `gpt-5.4`
+- Default answer model: `gpt-4.1-mini`
+- Higher-precision answer/eval model: `gpt-5-mini`
 - Embeddings default: `text-embedding-3-large` with `dimensions=1024`
 - Embeddings budget fallback: `text-embedding-3-small`
 
 ### Why
 
-- OpenAI currently recommends starting with `gpt-5.4` for complex reasoning and `gpt-5.4-mini` for lower-latency, lower-cost workloads.
-- `gpt-5.4-mini` is the right default for the interactive app.
-- `gpt-5.4` is useful for harder benchmark questions and judge-style evaluation passes.
+- `gpt-5-mini` offers stronger reasoning for complex multi-hop questions; `gpt-4.1-mini` is faster and cheaper for extractive RAG over short context.
+- `gpt-4.1-mini` is the right default for the interactive app.
+- `gpt-5-mini` is useful for harder benchmark questions and judge-style evaluation passes.
 - `text-embedding-3-large` is the strongest embedding option and supports dimension shortening, so `1024` dimensions is a strong quality/storage tradeoff for this project.
 
 This `1024` choice is a design recommendation, not an OpenAI default. The docs explicitly support shortening dimensions; the exact dimension is our implementation choice.
@@ -982,7 +982,7 @@ The following are my design recommendations inferred from the sources and the pr
 
 - the exact 2-4 week roadmap
 - the recommended repo structure
-- the `gpt-5.4-mini` default plus `gpt-5.4` fallback split for this product
+- the `gpt-4.1-mini` default plus `gpt-5-mini` fallback split for this product
 - the choice to use `text-embedding-3-large` at `1024` dimensions
 - the proposed chunk sizes and overlaps
 - the specific confidence bucketing strategy

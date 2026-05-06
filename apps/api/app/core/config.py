@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     qdrant_timeout_seconds: int = 60
     qdrant_upsert_batch_size: int = 16
     openai_api_key: str | None = None
-    openai_answer_model: str = "gpt-5.4-mini"
+    openai_answer_model: str = "gpt-4.1-mini"
     openai_embedding_model: str = "text-embedding-3-large"
     openai_embedding_dimensions: int = 1024
     local_embedding_dimensions: int = 256

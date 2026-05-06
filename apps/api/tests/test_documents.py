@@ -15,8 +15,8 @@ def test_detect_version_extracts_first_capture_group():
 def test_detect_document_type_picks_more_frequent_match():
     """Procedure document that mentions 'policy' once must classify as procedure.
 
-    Reproduction of the audit's H7: previously returned 'policy' because dict
-    insertion order made it the first match.
+    Earlier classifier returned 'policy' because dict insertion order made it
+    the first match; this regression-tests the word-boundary count fix.
     """
     text = (
         "Care Management Procedure. This procedure governs the discharge workflow. "
@@ -33,6 +33,19 @@ def test_detect_document_type_returns_none_when_no_keywords():
 def test_detect_document_type_uses_word_boundary():
     """'policymaker' must not match 'policy'."""
     assert _detect_document_type("Notes from a policymaker who attended a procedure review") == "procedure"
+
+
+def test_detect_document_type_classifies_dutch_cao_as_agreement():
+    """A Dutch CAO doc should land on the 'agreement' label, not None."""
+    text = (
+        "CAO GGZ 2025-2026. Deze collectieve arbeidsovereenkomst regelt de "
+        "arbeidsvoorwaarden. CAO partijen hebben afgesproken dat ..."
+    )
+    assert _detect_document_type(text) == "agreement"
+
+
+def test_detect_document_type_recognises_dutch_handboek():
+    assert _detect_document_type("Dit handboek beschrijft de werkwijze.") == "manual"
 
 
 def test_detect_department_picks_strongest_signal():

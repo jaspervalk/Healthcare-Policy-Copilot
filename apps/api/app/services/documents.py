@@ -68,14 +68,23 @@ def _detect_document_type(text: str) -> str | None:
     """Pick the document type with the most word-boundary keyword matches.
 
     Replaces the previous insertion-order priority that misclassified any
-    procedure mentioning 'policy' as a policy.
+    procedure mentioning 'policy' as a policy. Keywords cover EN and NL so
+    Dutch policy documents (e.g. CAO collective labour agreements) classify
+    instead of falling through to None.
     """
     lowered = text.lower()
     mapping = {
-        "policy": ["policy"],
+        "policy": ["policy", "beleid"],
         "procedure": ["procedure", "workflow"],
-        "manual": ["manual", "handbook"],
-        "guideline": ["guideline", "standard operating procedure", "sop"],
+        "manual": ["manual", "handbook", "handboek"],
+        "guideline": ["guideline", "standard operating procedure", "sop", "richtlijn"],
+        "agreement": [
+            "cao",
+            "collectieve arbeidsovereenkomst",
+            "collective labor agreement",
+            "collective labour agreement",
+            "collective bargaining agreement",
+        ],
     }
     best_label: str | None = None
     best_score = 0
